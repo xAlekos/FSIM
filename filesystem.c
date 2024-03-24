@@ -17,6 +17,13 @@
 #define SEEK_BLOCKS_SET 512
 
 
+/*
+
+Blocco di 256 byte in cui i primi 4 byte rappresentano i permessi ed il tipo del file, 
+i seguenti 252 byte rappresentano gli indici dei blocchi all'interno dei quali si trovano i dati
+del file rappresentato dall'inode.
+
+*/
 typedef struct inode{
 
     mode_t mode;
@@ -24,6 +31,10 @@ typedef struct inode{
 
 }inode_t;
 
+/*
+Rappresentazione del contenuto di una directory, ogni file contenuto in una directory 
+è rappresentato da una dir_entry. 
+*/
 typedef struct dir_entry{
     
     uint8_t inode_address;
@@ -33,6 +44,9 @@ typedef struct dir_entry{
 }dir_entry_t;
 
 
+/*
+Rappresentazione in memoria di un file.
+*/
 typedef struct file{
 
     char* name[MAX_FILE_NAME];
@@ -44,6 +58,9 @@ typedef struct file{
 }file_t;
 
 
+/*
+    Carica un file system da un file
+*/
 FILE* load_fs(char* path){
     FILE* fs = fopen(path,"rb+");
     if(fs == NULL)
@@ -51,7 +68,12 @@ FILE* load_fs(char* path){
     return fs;
 }
 
-/* Gestione tabella degli inode*/
+/* Gestione tabella degli inode
+
+Nel primo blocco del dispositivo di memorizzazione (un file) è presente una tabella degli inode che 
+indicizzata per numero di inode associa all'inode il blocco in cui questo è contentuto.
+
+*/
 uint8_t* init_inode_table(){
 
     uint8_t* new_inode_table =  calloc(MAX_INODES , sizeof(uint8_t));
@@ -62,7 +84,10 @@ uint8_t* init_inode_table(){
     return new_inode_table; 
 
 }
-
+/*
+    Salva sul file che rappresenta il dispositivo di memorizzazione del file system lo stato attuale 
+    della tabella degli inode
+*/
 void sync_inode_table(uint8_t* inode_table, FILE* fs){
     
     fseek(fs,0,SEEK_INODES_TABLE_SET);
@@ -70,6 +95,10 @@ void sync_inode_table(uint8_t* inode_table, FILE* fs){
 
 }
 
+/*
+    Legge da un file che rappresenta in dispositivo di memorizzazione del file system lo stato attuale della 
+    tabella degli inode
+*/
 void read_inode_table(uint8_t* inode_table, FILE* fs){
     
     fseek(fs,0,SEEK_INODES_TABLE_SET);
@@ -79,7 +108,10 @@ void read_inode_table(uint8_t* inode_table, FILE* fs){
 /*                                                        */
 
 
-/* Gestione dello spazio libero */
+/* Gestione dello spazio libero
+    Nel secondo blocco del dipositivo di memorizzazione è memorizzato un vettore 
+    che indicizzato per numero di blocco indica se lo stesso è occupato o meno
+*/
 uint8_t* init_freespace_table(){
 
     uint8_t* new_freespace_table =  calloc(MAX_BLOCKS_NUM , sizeof(uint8_t));
@@ -93,6 +125,9 @@ uint8_t* init_freespace_table(){
 
 }
 
+/*
+    Salva lo stato attuale del vettore dello spazio libero all'interno del file usato come dispositivo di memorizzazione
+*/
 void sync_freespace_table(uint8_t* freespace_table, FILE* fs){
     
     fseek(fs,0,SEEK_FREESPACE_TABLE_SET);
@@ -100,6 +135,10 @@ void sync_freespace_table(uint8_t* freespace_table, FILE* fs){
 
 }
 
+
+/*
+    Legge da un file usato come dipositivo di memorizzazione lo stato del vettore dello spazio libero
+*/
 void read_freespace_table(uint8_t* freespace_table, FILE* fs){
     
     fseek(fs,0,SEEK_FREESPACE_TABLE_SET);
@@ -107,6 +146,9 @@ void read_freespace_table(uint8_t* freespace_table, FILE* fs){
 
 }
 
+/*
+    Scorre la tabella dello spazio libero finchè non trova un blocco libero
+*/
 uint8_t find_free_block(uint8_t* freespace_table){
     
     int i = 0;
