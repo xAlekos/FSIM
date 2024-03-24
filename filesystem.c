@@ -37,8 +37,9 @@ Rappresentazione del contenuto di una directory, ogni file contenuto in una dire
 */
 typedef struct dir_entry{
     
-    uint8_t inode_address;
+    uint8_t inode_index;
     uint8_t name_lenght;
+
     char* name[MAX_FILE_NAME];
 
 }dir_entry_t;
@@ -52,6 +53,7 @@ typedef struct file{
     char* name[MAX_FILE_NAME];
     char* content[MAX_FILE_CONTENT];
 
+    size_t size;
     mode_t mode;
     dir_entry_t entries[MAX_DIR_ENTRIES];
 
@@ -107,6 +109,18 @@ void read_inode_table(uint8_t* inode_table, FILE* fs){
 }
 /*                                                        */
 
+uint8_t get_free_inode_number(uint8_t* inode_table){
+
+    int i = 0;
+    while(i < MAX_INODES && inode_table[i++] != 0);
+    
+    if(inode_table[i] == 0)
+        return i;
+    else 
+        return 0;
+
+}
+
 
 /* Gestione dello spazio libero
     Nel secondo blocco del dipositivo di memorizzazione è memorizzato un vettore 
@@ -153,7 +167,7 @@ uint8_t find_free_block(uint8_t* freespace_table){
     
     int i = 0;
     
-    while(freespace_table[i] != 0 && i < MAX_BLOCKS_NUM)
+    while(i < MAX_BLOCKS_NUM && freespace_table[i] != 0)
         i++;
     
     if(freespace_table[i] == 0)
@@ -166,15 +180,57 @@ uint8_t find_free_block(uint8_t* freespace_table){
 }
 /*----------------------------------------*/
 
+/*Manipolazione dei file*/
 
-void create_file(){
+file_t* create_test_file(){
+
+    file_t* new_file = malloc(sizeof(file_t));
+    memmove(new_file->name,"Test",4);
+    memmove(new_file->content,"Test_content",13);
+    new_file->size = 13;
+
+    return new_file;
+
+}
+
+file_t* create_root_dir(){
+
+    file_t* new_file = malloc(sizeof(file_t));
+    memmove(new_file->name,"/",4);
+    new_file->mode = S_IFDIR | 0444;
+    memset(new_file->entries,0,sizeof(dir_entry_t) * MAX_DIR_ENTRIES);
+    return new_file;
+}
+
+
+void sync_dir_entries(dir_entry_t* entries, FILE* fs, uint8_t* inode_table,uint8_t* free_space_table){
+    
+    while(entries->inode_index != 0){
+        
+        fwrite(entries->inode_index,1,1,fs);
+        fwrite(entries->name_lenght,1,1,fs);
+        fwrite(entries->name,1,entries->name_lenght,fs);
+
+    }
+}
+
+
+void sync_file(file_t* file, FILE* fs, uint8_t* inode_table,uint8_t* free_space_table){
 
 
 
 }
 
+void print_file(file_t* file){
+
+    printf("Name: %s\n",file->name);
+    printf("Content: %s\n",file->content);
+    printf("Size: %d\n",file->size);
+
+}
 
 int main(){
+
     FILE* fs = load_fs("./FS");
     
     if(fs == NULL){
@@ -183,14 +239,16 @@ int main(){
     }
 
     uint8_t* inode_table = init_inode_table();
-    read_inode_table(inode_table,fs);
     uint8_t* free_space_table = init_freespace_table();
-    read_freespace_table(free_space_table,fs);
 
-    if(inode_table == NULL)
+    if(inode_table == NULL || free_space_table == NULL)
         return 1;
+
+    file_t* root_dir = create_root_dir();
+    
+    
 
     
 
-    printf("filesystem\n");
+    
 }

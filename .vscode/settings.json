@@ -1,7 +1,8 @@
 {
     "C_Cpp.default.compilerPath": "/usr/bin/gcc",
     "files.associations": {
-        "stdio.h": "c"
+        "stdio.h": "c",
+        "fcntl.h": "c"
     },
     "cmake.configureOnOpen": false
 }
