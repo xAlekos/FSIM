@@ -53,6 +53,8 @@ typedef struct file{
     char* name[MAX_FILE_NAME];
     char* content[MAX_FILE_CONTENT];
 
+    uint8_t inode_num;
+
     size_t size;
     mode_t mode;
     dir_entry_t entries[MAX_DIR_ENTRIES];
@@ -68,6 +70,15 @@ FILE* load_fs(char* path){
     if(fs == NULL)
         return NULL;
     return fs;
+}
+
+
+void format_fs(FILE* fs){
+    
+    uint8_t zeroes[BLOCK_SIZE*MAX_BLOCKS_NUM];
+    memset(zeroes,0,BLOCK_SIZE*MAX_BLOCKS_NUM);
+    fseek(fs,0,0);
+    fwrite(zeroes,1,BLOCK_SIZE*MAX_BLOCKS_NUM,fs);
 }
 
 /* Gestione tabella degli inode
@@ -112,12 +123,20 @@ void read_inode_table(uint8_t* inode_table, FILE* fs){
 uint8_t get_free_inode_number(uint8_t* inode_table){
 
     int i = 0;
-    while(i < MAX_INODES && inode_table[i++] != 0);
+    while(i < MAX_INODES && inode_table[i] != 0)
+        i++;
     
     if(inode_table[i] == 0)
         return i;
     else 
         return 0;
+
+}
+
+void assign_inode_to_block(uint8_t inode, uint8_t block ,uint8_t* inode_table, uint8_t* free_space_table){
+    
+    inode_table[inode] = block;
+    free_space_table[block] = 1;
 
 }
 
@@ -143,8 +162,8 @@ uint8_t* init_freespace_table(){
     Salva lo stato attuale del vettore dello spazio libero all'interno del file usato come dispositivo di memorizzazione
 */
 void sync_freespace_table(uint8_t* freespace_table, FILE* fs){
-    
-    fseek(fs,0,SEEK_FREESPACE_TABLE_SET);
+
+    fseek(fs,SEEK_FREESPACE_TABLE_SET,0);
     fwrite(freespace_table,sizeof(uint8_t),MAX_BLOCKS_NUM,fs);
 
 }
@@ -155,7 +174,7 @@ void sync_freespace_table(uint8_t* freespace_table, FILE* fs){
 */
 void read_freespace_table(uint8_t* freespace_table, FILE* fs){
     
-    fseek(fs,0,SEEK_FREESPACE_TABLE_SET);
+    fseek(fs,SEEK_FREESPACE_TABLE_SET,0);
     fread(freespace_table,sizeof(uint8_t),MAX_BLOCKS_NUM,fs);
 
 }
@@ -163,7 +182,7 @@ void read_freespace_table(uint8_t* freespace_table, FILE* fs){
 /*
     Scorre la tabella dello spazio libero finchè non trova un blocco libero
 */
-uint8_t find_free_block(uint8_t* freespace_table){
+uint8_t get_free_block(uint8_t* freespace_table){
     
     int i = 0;
     
@@ -178,6 +197,35 @@ uint8_t find_free_block(uint8_t* freespace_table){
     
 
 }
+
+uint8_t get_and_set_free_block(uint8_t* freespace_table){
+    
+    int i = 0;
+    
+    while(i < MAX_BLOCKS_NUM && freespace_table[i] != 0)
+        i++;
+    
+    if(freespace_table[i] == 0){
+        freespace_table[i] = 1;
+        return i;
+    }
+    
+    else 
+        return 0;
+    
+
+}
+
+
+/*
+    Utils
+*/
+void move_to_block(uint8_t block_num, FILE* fs){
+    fseek(fs,block_num*BLOCK_SIZE,SEEK_SET);
+}
+
+
+
 /*----------------------------------------*/
 
 /*Manipolazione dei file*/
@@ -196,28 +244,34 @@ file_t* create_test_file(){
 file_t* create_root_dir(){
 
     file_t* new_file = malloc(sizeof(file_t));
-    memmove(new_file->name,"/",4);
+
     new_file->mode = S_IFDIR | 0444;
+    new_file->size = 0;
     memset(new_file->entries,0,sizeof(dir_entry_t) * MAX_DIR_ENTRIES);
     return new_file;
 }
 
-
-void sync_dir_entries(dir_entry_t* entries, FILE* fs, uint8_t* inode_table,uint8_t* free_space_table){
+void sync_file_inode(file_t* file, FILE* fs, uint8_t* inode_table,uint8_t* free_space_table){
     
-    while(entries->inode_index != 0){
-        
-        fwrite(entries->inode_index,1,1,fs);
-        fwrite(entries->name_lenght,1,1,fs);
-        fwrite(entries->name,1,entries->name_lenght,fs);
+    uint8_t inode_num = get_free_inode_number(inode_table);
+    uint8_t block_num = get_and_set_free_block(free_space_table);
+    file->inode_num = inode_num;
+    assign_inode_to_block(file->inode_num, block_num, inode_table, free_space_table);
+    move_to_block(block_num,fs);
+    fwrite(&(file->mode),4,1,fs); //salva sul dispositivo di memorizzazione i metadati del file
+    sync_freespace_table(free_space_table,fs);
+    sync_inode_table(inode_table,fs);
 
-    }
+
 }
 
 
-void sync_file(file_t* file, FILE* fs, uint8_t* inode_table,uint8_t* free_space_table){
 
+void sync_new_file(file_t* file, FILE* fs, uint8_t* inode_table,uint8_t* free_space_table){
+    
 
+    sync_file_inode(file,fs,inode_table,free_space_table);
+    
 
 }
 
@@ -232,6 +286,7 @@ void print_file(file_t* file){
 int main(){
 
     FILE* fs = load_fs("./FS");
+    //format_fs(fs);
     
     if(fs == NULL){
         perror("Errore apertura file");
@@ -240,15 +295,15 @@ int main(){
 
     uint8_t* inode_table = init_inode_table();
     uint8_t* free_space_table = init_freespace_table();
+    sync_inode_table(inode_table,fs);
+    sync_freespace_table(free_space_table,fs);
 
     if(inode_table == NULL || free_space_table == NULL)
         return 1;
 
     file_t* root_dir = create_root_dir();
-    
-    
 
-    
-
+    sync_file_inode(root_dir,fs,inode_table,free_space_table);
+    fclose(fs);
     
 }
