@@ -217,18 +217,21 @@ void move_to_block(uint8_t block_num,uint8_t offset ,FILE* fs){
 }
 
 uint8_t move_to_empty_space_in_block(FILE* fs){
-
-    uint8_t i;
+    //fanne uno apposta per gli inode, fgetc non va bene perchè ti porta avanti di uno dopo che trova lo 0
+    uint8_t i = 0;
     char ch;
-    while(ch == 0){
+    fread(&ch,1,1,fs);
+    while(ch != 0){
         i++;
         ch = fgetc(fs);
     }
     if(i >= BLOCK_SIZE)
         return 0;
-    else
-        return i;
 
+    else{
+        printf("%d\n",ftell(fs));
+        return i;
+    }
 }
 
 void assign_inode_to_block(uint8_t inode, uint8_t block ,uint8_t* inode_table, uint8_t* free_space_table,FILE* fs){
