@@ -12,9 +12,7 @@
 #define MAX_INODES 256
 #define MAX_DIR_ENTRIES 256
 
-#define SEEK_INODES_TABLE_SET 0
 #define SEEK_FREESPACE_TABLE_SET 256
-#define SEEK_BLOCKS_SET 512
 
 
 /*
@@ -103,7 +101,7 @@ uint8_t* init_inode_table(){
 */
 void sync_inode_table(uint8_t* inode_table, FILE* fs){
     
-    fseek(fs,0,SEEK_INODES_TABLE_SET);
+    fseek(fs,0,SEEK_SET);
     fwrite(inode_table,sizeof(uint8_t),MAX_INODES,fs);
 
 }
@@ -114,7 +112,7 @@ void sync_inode_table(uint8_t* inode_table, FILE* fs){
 */
 void read_inode_table(uint8_t* inode_table, FILE* fs){
     
-    fseek(fs,0,SEEK_INODES_TABLE_SET);
+    fseek(fs,0,SEEK_SET);
     fread(inode_table,sizeof(uint8_t),MAX_INODES,fs);
 
 }
@@ -140,6 +138,29 @@ void assign_inode_to_block(uint8_t inode, uint8_t block ,uint8_t* inode_table, u
 
 }
 
+uint8_t assign_block_to_inode(uint8_t inode, uint8_t block ,uint8_t* inode_table, uint8_t* free_space_table, FILE* fs){
+    
+    uint8_t ret;
+    uint8_t block_num = get_and_set_free_block(free_space_table);
+    uint8_t inode_block_num = inode_table[inode];
+
+    move_to_block(inode_block_num,0,fs);
+    ret = move_to_empty_space_in_block(fs);
+    if(ret == 0)
+        return 0;
+    fwrite(&inode_block_num,1,1,fs);
+    return block_num;
+}
+
+inode_t read_inode(uint8_t inode_num, uint8_t* inode_table,FILE* fs){
+
+    inode_t inode;
+    move_to_block(inode_num,0,fs);
+    fread(inode.mode,4,1,fs);
+    move_to_block(inode_num,4,fs);
+    fread(inode.index_vector,1,252,fs);
+    return inode;
+}
 
 /* Gestione dello spazio libero
     Nel secondo blocco del dipositivo di memorizzazione è memorizzato un vettore 
@@ -220,10 +241,24 @@ uint8_t get_and_set_free_block(uint8_t* freespace_table){
 /*
     Utils
 */
-void move_to_block(uint8_t block_num, FILE* fs){
-    fseek(fs,block_num*BLOCK_SIZE,SEEK_SET);
+void move_to_block(uint8_t block_num,uint8_t offset ,FILE* fs){
+    fseek(fs,block_num*BLOCK_SIZE + offset,SEEK_SET);
 }
 
+uint8_t move_to_empty_space_in_block(FILE* fs){
+
+    uint8_t i;
+    char ch;
+    while(ch == 0){
+        i++;
+        ch = fgetc(fs);
+    }
+    if(i >= BLOCK_SIZE)
+        return 0;
+    else
+        return i;
+
+}
 
 
 /*----------------------------------------*/
@@ -251,13 +286,13 @@ file_t* create_root_dir(){
     return new_file;
 }
 
-void sync_file_inode(file_t* file, FILE* fs, uint8_t* inode_table,uint8_t* free_space_table){
+void sync_new_file(file_t* file, FILE* fs, uint8_t* inode_table,uint8_t* free_space_table){
     
     uint8_t inode_num = get_free_inode_number(inode_table);
     uint8_t block_num = get_and_set_free_block(free_space_table);
     file->inode_num = inode_num;
     assign_inode_to_block(file->inode_num, block_num, inode_table, free_space_table);
-    move_to_block(block_num,fs);
+    move_to_block(block_num,0,fs);
     fwrite(&(file->mode),4,1,fs); //salva sul dispositivo di memorizzazione i metadati del file
     sync_freespace_table(free_space_table,fs);
     sync_inode_table(inode_table,fs);
@@ -272,6 +307,42 @@ void sync_new_file(file_t* file, FILE* fs, uint8_t* inode_table,uint8_t* free_sp
 
     sync_file_inode(file,fs,inode_table,free_space_table);
     
+
+}
+
+uint8_t add_file_to_dir(file_t* file,char* path ,FILE* fs, uint8_t* inode_table,uint8_t* free_space_table){
+    
+    uint8_t dir_inode_num;
+    inode_t dir_inode;
+    uint8_t i;
+    uint8_t ret;
+    uint8_t file_name_lenght = strlen(file->name);
+
+    sync_new_file(file,fs,inode_table,free_space_table);
+
+    if(strcmp(path,"/") == 0)
+        dir_inode_num = 0;
+
+    
+    dir_inode = read_inode(dir_inode_num,inode_table,fs); 
+    
+    while(dir_inode.index_vector[i] != 0){//sostituire con una funzione
+        i++;
+    }
+    
+    move_to_block(dir_inode.index_vector[i],0,fs); //Siamo nel blocco dati di una directory,
+    ret = move_to_empty_space_in_block(fs);
+
+    if(ret == 0)
+        return 0;
+        
+    fwrite(&(file->inode_num),1,1,fs);
+    fwrite(&file_name_lenght,1,1,fs);
+    fwrite(file->name,1,file_name_lenght,fs);
+
+
+
+        //bla bla
 
 }
 
@@ -303,7 +374,7 @@ int main(){
 
     file_t* root_dir = create_root_dir();
 
-    sync_file_inode(root_dir,fs,inode_table,free_space_table);
+    sync_new_file(root_dir,fs,inode_table,free_space_table);
     fclose(fs);
     
 }
