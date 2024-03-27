@@ -15,7 +15,7 @@
 #define SEEK_FREESPACE_TABLE_SET 256
 
 void move_to_block(uint8_t block_num,uint8_t offset ,FILE* fs);
-uint8_t assign_block_to_inode(uint8_t inode, uint8_t block_num ,uint8_t* inode_table, uint8_t* free_space_table, FILE* fs);
+uint8_t assign_block_to_inode(uint8_t inode,uint8_t* inode_table, uint8_t* free_space_table, FILE* fs);
 /*
 
 Blocco di 256 byte in cui i primi 4 byte rappresentano i permessi ed il tipo del file, 
@@ -228,22 +228,47 @@ uint8_t get_and_set_free_block(uint8_t* freespace_table,FILE* fs){
 /*
     Utils
 */
-void move_to_block(uint8_t block_num,uint8_t offset ,FILE* fs){
-    fseek(fs,block_num*BLOCK_SIZE + offset,SEEK_SET);
+
+void write_file_info(file_t* file, FILE* fs){
+
+    uint8_t file_name_lenght = strlen(file->name);
+    fwrite(&(file->inode_num),1,1,fs);
+    fwrite(&file_name_lenght,1,1,fs);
+    fwrite(file->name,1,file_name_lenght,fs);
+
 }
 
-int move_to_empty_space_in_block(FILE* fs){
+
+void move_to_block(uint8_t block_num,uint8_t offset ,FILE* fs){
+    uint16_t ret = fseek(fs,block_num*BLOCK_SIZE + offset,SEEK_SET);
+}
+
+int8_t move_to_empty_space_in_block(uint8_t block_num,uint8_t is_inode,FILE* fs){
 
     uint8_t i = 0;
-    char ch;
+    char ch = 0;
+    uint8_t offset = 0;
+    uint16_t start_pos;
+
+    if(is_inode == 1)
+        offset = 4;
+
+    move_to_block(block_num,offset,fs);
+    start_pos = ftell(fs);
+
     fread(&ch,1,1,fs);
+    fseek(fs,start_pos,SEEK_SET);
+
     while(ch != 0){
+        
         i++;
-        fread(&ch,1,1,fs);
-        if(ch != 0)
-            fseek(fs,1,SEEK_CUR);
+        fseek(fs,start_pos + i,SEEK_SET);
+        fread(&ch,1,1,fs); 
+        if(ch == 0)
+            fseek(fs,start_pos + i,SEEK_SET);
     }
-    if(i >= BLOCK_SIZE)
+
+    if(i >= BLOCK_SIZE - offset) //Se il blocco è pieno!
         return -1;
 
     else{
@@ -252,28 +277,35 @@ int move_to_empty_space_in_block(FILE* fs){
     }
 }
 
-int move_to_file_data_block(uint8_t inode_num, uint8_t* inode_table, uint8_t* free_space_table,FILE* fs){
-    
+/*
+Sposta la posizione all'interno del file all'ultimo blocco dati di un file a partire dal numero di inode, non dovesse essere presente un blocco dati libero,
+ne assegna uno.
+*/
+
+int8_t move_to_file_data_block(uint8_t inode_num, uint8_t* inode_table, uint8_t* free_space_table,FILE* fs){
+
     uint8_t i = 0;
     inode_t inode = read_inode(inode_num,inode_table,fs); 
     
-    while(inode.index_vector[i] != 0){//sostituire con una funzione
+    while(inode.index_vector[i] != 0 && move_to_empty_space_in_block(inode.index_vector[i],0,fs) == -1){
         i++;
     }
     if(inode.index_vector[i] == 0){
-        uint8_t new_block = get_and_set_free_block(free_space_table,fs);
-        assign_block_to_inode(inode_num,new_block,inode_table,free_space_table,fs);
+        assign_block_to_inode(inode_num,inode_table,free_space_table,fs);
         inode= read_inode(inode_num,inode_table,fs);
+        return move_to_empty_space_in_block(inode.index_vector[i],0,fs);
     }
-    else //Se il blocco indice è pieno
-        return -1;
+    else 
+        return 1;
 
-    move_to_block(inode.index_vector[i],0,fs); 
-
-    return move_to_empty_space_in_block(fs);
+    
 
 }
 
+/*
+Assegna un inode ad un blocco, questo blocco conterrà gli indici di tutti i blocchi facenti parti del file
+rappresentato dall'inode
+*/
 void assign_inode_to_block(uint8_t inode, uint8_t block ,uint8_t* inode_table, uint8_t* free_space_table,FILE* fs){
     
     inode_table[inode] = block;
@@ -283,15 +315,20 @@ void assign_inode_to_block(uint8_t inode, uint8_t block ,uint8_t* inode_table, u
 
 }
 
-uint8_t assign_block_to_inode(uint8_t inode, uint8_t block_num ,uint8_t* inode_table, uint8_t* free_space_table, FILE* fs){
+/*
+Assegna un blocco libero ad un inode, imposta il blocco assegnato come occupato.
+*/
+uint8_t assign_block_to_inode(uint8_t inode,uint8_t* inode_table, uint8_t* free_space_table, FILE* fs){
     
     uint8_t ret;
+    uint8_t block_num = get_and_set_free_block(free_space_table,fs);
     uint8_t inode_block_num = inode_table[inode];
 
-    move_to_block(inode_block_num,0,fs);
-    ret = move_to_empty_space_in_block(fs);
-    if(ret == 0)
+    ret = move_to_empty_space_in_block(inode_block_num,1,fs);
+    
+    if(ret == -1) //Il blocco è pieno 
         return 0;
+
     fwrite(&block_num,1,1,fs);
     
     return block_num;
@@ -305,7 +342,6 @@ file_t* create_test_file(){
 
     file_t* new_file = malloc(sizeof(file_t));
     memmove(new_file->name,"Test",4);
-    memmove(new_file->content,"Test_content",13);
     new_file->size = 13;
     new_file->mode = S_IFREG | 0755;
 
@@ -327,6 +363,7 @@ void sync_new_file(file_t* file, FILE* fs, uint8_t* inode_table,uint8_t* free_sp
     
     uint8_t inode_num = get_free_inode_number(inode_table);
     uint8_t block_num = get_and_set_free_block(free_space_table,fs);
+
     file->inode_num = inode_num;
     assign_inode_to_block(file->inode_num, block_num, inode_table, free_space_table,fs);
     move_to_block(block_num,0,fs);
@@ -336,16 +373,6 @@ void sync_new_file(file_t* file, FILE* fs, uint8_t* inode_table,uint8_t* free_sp
 
 
 }
-
-
-void write_file_info(file_t* file, FILE* fs){
-    uint8_t file_name_lenght = strlen(file->name);
-    fwrite(&(file->inode_num),1,1,fs);
-    fwrite(&file_name_lenght,1,1,fs);
-    fwrite(file->name,1,file_name_lenght,fs);
-
-}
-
 
 uint8_t add_file_to_dir(file_t* file,char* path ,FILE* fs, uint8_t* inode_table,uint8_t* free_space_table){
 
@@ -388,6 +415,8 @@ int main(){
     file_t* root_dir = create_root_dir();
     sync_new_file(root_dir,fs,inode_table,free_space_table);
     file_t* test= create_test_file();
+    add_file_to_dir(test,"/",fs,inode_table,free_space_table);
+    add_file_to_dir(test,"/",fs,inode_table,free_space_table);
     add_file_to_dir(test,"/",fs,inode_table,free_space_table);
     fclose(fs);
     
