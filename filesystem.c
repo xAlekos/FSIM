@@ -216,23 +216,26 @@ void move_to_block(uint8_t block_num,uint8_t offset ,FILE* fs){
     fseek(fs,block_num*BLOCK_SIZE + offset,SEEK_SET);
 }
 
-uint8_t move_to_empty_space_in_block(FILE* fs){
+int move_to_empty_space_in_block(FILE* fs){
     //fanne uno apposta per gli inode, fgetc non va bene perchè ti porta avanti di uno dopo che trova lo 0
     uint8_t i = 0;
     char ch;
     fread(&ch,1,1,fs);
     while(ch != 0){
         i++;
-        ch = fgetc(fs);
+        fread(&ch,1,1,fs);
+        if(ch != 0)
+            fseek(fs,1,SEEK_CUR);
     }
     if(i >= BLOCK_SIZE)
-        return 0;
+        return -1;
 
     else{
         printf("%d\n",ftell(fs));
         return i;
     }
 }
+
 
 void assign_inode_to_block(uint8_t inode, uint8_t block ,uint8_t* inode_table, uint8_t* free_space_table,FILE* fs){
     
@@ -243,10 +246,9 @@ void assign_inode_to_block(uint8_t inode, uint8_t block ,uint8_t* inode_table, u
 
 }
 
-uint8_t assign_block_to_inode(uint8_t inode, uint8_t block ,uint8_t* inode_table, uint8_t* free_space_table, FILE* fs){
+uint8_t assign_block_to_inode(uint8_t inode, uint8_t block_num ,uint8_t* inode_table, uint8_t* free_space_table, FILE* fs){
     
     uint8_t ret;
-    uint8_t block_num = get_and_set_free_block(free_space_table,fs);
     uint8_t inode_block_num = inode_table[inode];
 
     move_to_block(inode_block_num,0,fs);
@@ -281,6 +283,7 @@ file_t* create_test_file(){
     memmove(new_file->name,"Test",4);
     memmove(new_file->content,"Test_content",13);
     new_file->size = 13;
+    new_file->mode = S_IFREG | 0755;
 
     return new_file;
 
@@ -339,7 +342,7 @@ uint8_t add_file_to_dir(file_t* file,char* path ,FILE* fs, uint8_t* inode_table,
     move_to_block(dir_inode.index_vector[i],0,fs); //Siamo nel blocco dati di una directory,
     ret = move_to_empty_space_in_block(fs);
 
-    if(ret == 0)
+    if(ret == -1)
         return 0;
         
     fwrite(&(file->inode_num),1,1,fs);
