@@ -69,7 +69,7 @@ typedef struct file{
 }file_t;
 
 
-uint16_t block_free_space_left(filesystem_t* fs);
+uint16_t block_free_space_left(uint8_t block_num,filesystem_t* fs);
 void move_to_block(uint8_t block_num,uint8_t offset ,filesystem_t* fs);
 uint8_t assign_block_to_inode(uint8_t inode,filesystem_t* fs);
 void sync_fs(filesystem_t* fs);
@@ -261,23 +261,25 @@ uint8_t get_and_set_free_block(filesystem_t* fs){
     lunghezza del nome e nome del file. Queste informazioni vanno scritte all'interno di un blocco dati
     facente parte di una directory, è dunque necessario spostarsi nel blocco corretto prima di chimare questa funzione.
 */
-void write_file_info(file_t* file,uint8_t dir_inode_num ,filesystem_t* fs){
+void write_file_info(file_t* file,uint8_t dir_inode_num ,uint8_t starting_block,filesystem_t* fs){
 
     uint8_t i = 0;
     uint8_t file_name_lenght = strlen(file->name);
-    uint8_t new_block;
+    uint8_t block = starting_block;
     uint16_t ret;
 
+    printf("write to %d\n",ftell(fs->file));
     fwrite(&(file->inode_num),1,1,fs->file);
+    printf("write to %d\n",ftell(fs->file));
     fwrite(&file_name_lenght,1,1,fs->file);
 
     while(i < file_name_lenght){
 
-        if(block_free_space_left(fs) == 0){
-            new_block = assign_block_to_inode(dir_inode_num,fs);
-            move_to_block(new_block,0,fs);
+        if(block_free_space_left(block,fs) == 0){
+            block = assign_block_to_inode(dir_inode_num,fs);
+            move_to_block(block,0,fs);
         }
-
+        printf("write to %d\n",ftell(fs->file));
         fwrite(file->name + i,1,1,fs->file);
         i++;
     }
@@ -302,7 +304,7 @@ void move_to_block(uint8_t block_num,uint8_t offset ,filesystem_t* fs){
 */
 int8_t move_to_empty_space_in_block(uint8_t block_num,uint8_t is_inode,filesystem_t* fs){
 
-    uint8_t i = 0;
+    uint16_t i = 0;
     char ch = 0;
     uint8_t offset = 0;
     uint16_t start_pos;
@@ -392,10 +394,9 @@ uint8_t assign_block_to_inode(uint8_t inode,filesystem_t* fs){
 }
 
 
-uint16_t block_free_space_left(filesystem_t* fs){
+uint16_t block_free_space_left(uint8_t block_num,filesystem_t* fs){
     
     uint16_t pos = ftell(fs->file);
-    uint16_t block_num = pos/256;
     uint16_t space_left =  BLOCK_SIZE*(block_num + 1) - pos;
 
     return space_left;
@@ -494,6 +495,7 @@ int8_t new_file_to_dir(file_t* file,char* path , filesystem_t* fs){
 
     uint8_t dir_inode_num;
     uint8_t ret;
+    uint8_t block;
 
     if(strcmp(path,"/") == 0)
         dir_inode_num = 0;
@@ -506,8 +508,8 @@ int8_t new_file_to_dir(file_t* file,char* path , filesystem_t* fs){
         return -1;
 
     sync_new_file(file,fs);
-    move_to_data_block(dir_inode_num,fs);
-    write_file_info(file,dir_inode_num,fs);
+    block = move_to_data_block(dir_inode_num,fs);
+    write_file_info(file,dir_inode_num,block,fs);
     
 }
 
@@ -523,11 +525,14 @@ int main(){
     file_t* root_dir = create_root_dir();
     sync_new_file(root_dir,filesystem);
     file_t* test= create_test_file();
-    /*while(getchar() == 'a'){
+
+    for(int i = 0; i < 40;i++)
+        new_file_to_dir(test,"/",filesystem);
+    while(getchar() == 'a'){
         new_file_to_dir(test,"/",filesystem);
         getchar();
-    }*/
-    new_file_to_dir(test,"/",filesystem);
+    }
+    //new_file_to_dir(test,"/",filesystem);
 
     fclose(filesystem->file);
     
