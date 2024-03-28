@@ -9,6 +9,7 @@
 #define MAX_FILE_CONTENT 1024       //Ogni file può essere composto massimo da 4 blocchi 
 #define BLOCK_SIZE 256              
 #define MAX_BLOCKS_NUM 256
+#define MAX_BLOCKS_PER_NODE 252
 #define MAX_INODES 256
 #define MAX_DIR_ENTRIES 256
 
@@ -33,7 +34,7 @@ del file rappresentato dall'inode.
 typedef struct inode{
 
     mode_t mode;
-    uint8_t index_vector[252];
+    uint8_t index_vector[MAX_BLOCKS_PER_NODE];
 
 }inode_t;
 
@@ -68,7 +69,7 @@ typedef struct file{
 }file_t;
 
 
-
+uint16_t block_free_space_left(filesystem_t* fs);
 void move_to_block(uint8_t block_num,uint8_t offset ,filesystem_t* fs);
 uint8_t assign_block_to_inode(uint8_t inode,filesystem_t* fs);
 void sync_fs(filesystem_t* fs);
@@ -260,13 +261,26 @@ uint8_t get_and_set_free_block(filesystem_t* fs){
     lunghezza del nome e nome del file. Queste informazioni vanno scritte all'interno di un blocco dati
     facente parte di una directory, è dunque necessario spostarsi nel blocco corretto prima di chimare questa funzione.
 */
-void write_file_info(file_t* file, filesystem_t* fs){
+void write_file_info(file_t* file,uint8_t dir_inode_num ,filesystem_t* fs){
 
+    uint8_t i = 0;
     uint8_t file_name_lenght = strlen(file->name);
+    uint8_t new_block;
+    uint16_t ret;
 
     fwrite(&(file->inode_num),1,1,fs->file);
     fwrite(&file_name_lenght,1,1,fs->file);
-    fwrite(file->name,1,file_name_lenght,fs->file);
+
+    while(i < file_name_lenght){
+
+        if(block_free_space_left(fs) == 0){
+            new_block = assign_block_to_inode(dir_inode_num,fs);
+            move_to_block(new_block,0,fs);
+        }
+
+        fwrite(file->name + i,1,1,fs->file);
+        i++;
+    }
 
 }
 
@@ -326,7 +340,7 @@ Sposta la posizione all'interno del file all'ultimo blocco dati di un file a par
 ne assegna uno.
 */
 
-int8_t move_to_data_block(uint8_t inode_num, filesystem_t* fs){
+uint8_t move_to_data_block(uint8_t inode_num, filesystem_t* fs){
 
     uint8_t i = 0;
     inode_t inode = read_inode(inode_num,fs); 
@@ -338,10 +352,9 @@ int8_t move_to_data_block(uint8_t inode_num, filesystem_t* fs){
         assign_block_to_inode(inode_num,fs);
         inode= read_inode(inode_num,fs);
         move_to_block(inode.index_vector[i],0,fs);
-        return 0; 
     }
-    else 
-        return 1;
+
+    return inode.index_vector[i];
 
     
 
@@ -378,6 +391,18 @@ uint8_t assign_block_to_inode(uint8_t inode,filesystem_t* fs){
     return block_num;
 }
 
+
+uint16_t block_free_space_left(filesystem_t* fs){
+    
+    uint16_t pos = ftell(fs->file);
+    uint16_t block_num = pos/256;
+    uint16_t space_left =  BLOCK_SIZE*(block_num + 1) - pos;
+
+    return space_left;
+
+}
+
+
 /*----------------------------------------*/
 
 /*Gestione Filesystem*/
@@ -396,7 +421,8 @@ filesystem_t* init_fs(filesystem_t* fs){
     new_fs->free_space_table = init_freespace_table();
     new_fs->inode_table = init_inode_table();
     new_fs->file = load_fs("./FS");
-    
+    format_fs(new_fs->file);
+
     if(new_fs->inode_table == NULL || new_fs->free_space_table == NULL)
         return NULL;
 
@@ -449,6 +475,21 @@ int8_t sync_new_file(file_t* file, filesystem_t* fs){
 
 }
 
+uint8_t is_inode_full(uint8_t dir_inode_num, filesystem_t* fs){
+    
+    uint8_t i = 0;
+    inode_t inode = read_inode(dir_inode_num,fs); 
+    
+    while(inode.index_vector[i] != 0 && move_to_empty_space_in_block(inode.index_vector[i],0,fs) == -1){
+        i++;
+    }
+    if(i == MAX_BLOCKS_PER_NODE && inode.index_vector[i] != 0 && move_to_empty_space_in_block(inode.index_vector[i],0,fs) == -1)
+        return 1;
+    else 
+        return 0;
+    
+}
+
 int8_t new_file_to_dir(file_t* file,char* path , filesystem_t* fs){
 
     uint8_t dir_inode_num;
@@ -457,18 +498,20 @@ int8_t new_file_to_dir(file_t* file,char* path , filesystem_t* fs){
     if(strcmp(path,"/") == 0)
         dir_inode_num = 0;
     /*TODO ! 1 Altrimenti trova la dir dal path.
-             2 Check se la dir è piena prima di aggiungere il file in memoria.*/
+             2 Check se la dir è piena prima di aggiungere il file in memoria. FATTO*/
+
+    ret = is_inode_full(dir_inode_num,fs);
+    
+    if(ret == 1)
+        return -1;
 
     sync_new_file(file,fs);
-    ret = move_to_data_block(dir_inode_num,fs);
-
-    if(ret == -1) 
-        return -1;
-        
-    write_file_info(file,fs);
-        
-
+    move_to_data_block(dir_inode_num,fs);
+    write_file_info(file,dir_inode_num,fs);
+    
 }
+
+
 
 int main(){
 
@@ -480,9 +523,12 @@ int main(){
     file_t* root_dir = create_root_dir();
     sync_new_file(root_dir,filesystem);
     file_t* test= create_test_file();
+    /*while(getchar() == 'a'){
+        new_file_to_dir(test,"/",filesystem);
+        getchar();
+    }*/
     new_file_to_dir(test,"/",filesystem);
-    new_file_to_dir(test,"/",filesystem);
-    new_file_to_dir(test,"/",filesystem);
+
     fclose(filesystem->file);
     
 }
