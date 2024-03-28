@@ -319,7 +319,7 @@ void move_to_block(uint8_t block_num,uint8_t offset ,filesystem_t* fs){
     Se il blocco in esame è un inode questo va segnalato tramite il parametro is_inode.
 
 */
-int8_t move_to_empty_space_in_block(uint8_t block_num,uint8_t is_inode,filesystem_t* fs){
+int16_t move_to_empty_space_in_block(uint8_t block_num,uint8_t is_inode,filesystem_t* fs){
 
     uint16_t i = 0;
     char ch = 0;
@@ -364,12 +364,11 @@ uint8_t move_to_data_block(uint8_t inode_num, filesystem_t* fs){
     inode_t inode = read_inode(inode_num,fs); 
     uint16_t ret;
     while(inode.index_vector[i] != 0){
-
+        
         if(move_to_empty_space_in_block(inode.index_vector[i],0,fs) != -1)
             break;
-        
-        i++;
-
+        else
+            i++;
     }
 
     if(inode.index_vector[i] == 0){
