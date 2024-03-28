@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 
-#define MAX_FILE_NAME 100
+#define MAX_FILE_NAME 256
 #define MAX_FILE_CONTENT 1024       //Ogni file può essere composto massimo da 4 blocchi 
 #define BLOCK_SIZE 256              
 #define MAX_BLOCKS_NUM 256
@@ -256,6 +256,24 @@ uint8_t get_and_set_free_block(filesystem_t* fs){
 
 
 /*
+    Se il blocco in cui stanno venendo scritti dei dati risulta pieno, assegna un nuovo blocco
+    all'inode che rappresenta il file sul quale si sta scrivendo e sposta la posizione all'interno
+    del file che rappresenta il file system a quella di questo nuovo blocco.
+*/
+uint8_t reach_new_block_if_full(uint8_t inode_num,uint8_t starting_block,filesystem_t* fs){
+
+    uint8_t new_block;
+    if(block_free_space_left(starting_block,fs) == 0){
+            new_block = assign_block_to_inode(inode_num,fs);
+            move_to_block(new_block,0,fs);
+            return new_block;
+        }
+    else    
+        return starting_block;
+
+}
+
+/*
     Scrive sul file che rappresenta il file system le informazioni necessarie
     ad indicare che un file si trova all'interno della directory: Numero di inode,
     lunghezza del nome e nome del file. Queste informazioni vanno scritte all'interno di un blocco dati
@@ -266,22 +284,19 @@ void write_file_info(file_t* file,uint8_t dir_inode_num ,uint8_t starting_block,
     uint8_t i = 0;
     uint8_t file_name_lenght = strlen(file->name);
     uint8_t block = starting_block;
-    uint16_t ret;
 
-    printf("write to %d\n",ftell(fs->file));
+    block = reach_new_block_if_full(dir_inode_num,block,fs);
     fwrite(&(file->inode_num),1,1,fs->file);
-    printf("write to %d\n",ftell(fs->file));
+
+    block = reach_new_block_if_full(dir_inode_num,block,fs);
     fwrite(&file_name_lenght,1,1,fs->file);
 
     while(i < file_name_lenght){
 
-        if(block_free_space_left(block,fs) == 0){
-            block = assign_block_to_inode(dir_inode_num,fs);
-            move_to_block(block,0,fs);
-        }
-        printf("write to %d\n",ftell(fs->file));
+        block = reach_new_block_if_full(dir_inode_num,block,fs);
         fwrite(file->name + i,1,1,fs->file);
         i++;
+
     }
 
 }
@@ -526,7 +541,7 @@ int main(){
     sync_new_file(root_dir,filesystem);
     file_t* test= create_test_file();
 
-    for(int i = 0; i < 40;i++)
+    for(int i = 0; i < 80;i++)
         new_file_to_dir(test,"/",filesystem);
     while(getchar() == 'a'){
         new_file_to_dir(test,"/",filesystem);
