@@ -285,15 +285,17 @@ void write_file_info(file_t* file,uint8_t dir_inode_num ,uint8_t starting_block,
     uint8_t file_name_lenght = strlen(file->name);
     uint8_t block = starting_block;
 
+    printf("write to: %d\n",ftell(fs->file));
     block = reach_new_block_if_full(dir_inode_num,block,fs);
     fwrite(&(file->inode_num),1,1,fs->file);
-
     block = reach_new_block_if_full(dir_inode_num,block,fs);
+    printf("write to: %d\n",ftell(fs->file));
     fwrite(&file_name_lenght,1,1,fs->file);
 
     while(i < file_name_lenght){
 
         block = reach_new_block_if_full(dir_inode_num,block,fs);
+        printf("write to: %d\n",ftell(fs->file));
         fwrite(file->name + i,1,1,fs->file);
         i++;
 
@@ -347,7 +349,6 @@ int8_t move_to_empty_space_in_block(uint8_t block_num,uint8_t is_inode,filesyste
         return -1;
 
     else{
-        printf("%d\n",ftell(fs->file));
         return i;
     }
 }
@@ -361,10 +362,16 @@ uint8_t move_to_data_block(uint8_t inode_num, filesystem_t* fs){
 
     uint8_t i = 0;
     inode_t inode = read_inode(inode_num,fs); 
-    
-    while(inode.index_vector[i] != 0 && move_to_empty_space_in_block(inode.index_vector[i],0,fs) == -1){
+    uint16_t ret;
+    while(inode.index_vector[i] != 0){
+
+        if(move_to_empty_space_in_block(inode.index_vector[i],0,fs) != -1)
+            break;
+        
         i++;
+
     }
+
     if(inode.index_vector[i] == 0){
         assign_block_to_inode(inode_num,fs);
         inode= read_inode(inode_num,fs);
@@ -456,7 +463,7 @@ filesystem_t* init_fs(filesystem_t* fs){
 file_t* create_test_file(){
 
     file_t* new_file = malloc(sizeof(file_t));
-    memmove(new_file->name,"Test",4);
+    memmove(new_file->name,"Testa",5);
     new_file->size = 13;
     new_file->mode = S_IFREG | 0755;
 
@@ -541,7 +548,7 @@ int main(){
     sync_new_file(root_dir,filesystem);
     file_t* test= create_test_file();
 
-    for(int i = 0; i < 80;i++)
+    for(int i = 0; i < 65;i++)
         new_file_to_dir(test,"/",filesystem);
     while(getchar() == 'a'){
         new_file_to_dir(test,"/",filesystem);
