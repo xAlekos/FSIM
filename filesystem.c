@@ -117,8 +117,11 @@ void read_inode_table(uint8_t* inode_table, FILE* fs){
     fread(inode_table,sizeof(uint8_t),MAX_INODES,fs);
 
 }
-/*                                                        */
-
+/*                             
+    Scorre la tabella degli inode fino a trovare un inode libero,
+    ritorna il numero di inode libero, 0 altrimenti.
+    (0 non potrà mai essere libero in quanto è assegnato alla directory root)
+*/
 uint8_t get_free_inode_number(uint8_t* inode_table){
 
     int i = 0;
@@ -132,6 +135,10 @@ uint8_t get_free_inode_number(uint8_t* inode_table){
 
 }
 
+/*
+    Dato un numero di inode ne legge dal file il contenuto, ritorna una rappresentazione 
+    dell'inode letto come variabile di tipo inode_t
+*/
 inode_t read_inode(uint8_t inode_num, uint8_t* inode_table,FILE* fs){
 
     inode_t inode;
@@ -205,6 +212,11 @@ uint8_t get_free_block(uint8_t* freespace_table){
 
 }
 
+/*
+    Scorre la tabella dello spazio libero finchè non trova un blocco libero 
+    e imposta come occupato il blocco trovato libero.
+    ritorna il numero del blocco libero trovato.
+*/
 uint8_t get_and_set_free_block(uint8_t* freespace_table,FILE* fs){
     
     uint8_t i = 0;
@@ -229,20 +241,39 @@ uint8_t get_and_set_free_block(uint8_t* freespace_table,FILE* fs){
     Utils
 */
 
+
+/*
+    Scrive sul file che rappresenta il file system le informazioni necessarie
+    ad indicare che un file si trova all'interno della directory: Numero di inode,
+    lunghezza del nome e nome del file. Queste informazioni vanno scritte all'interno di un blocco dati
+    facente parte di una directory, è dunque necessario spostarsi nel blocco corretto prima di chimare questa funzione.
+*/
 void write_file_info(file_t* file, FILE* fs){
 
     uint8_t file_name_lenght = strlen(file->name);
+    
     fwrite(&(file->inode_num),1,1,fs);
     fwrite(&file_name_lenght,1,1,fs);
     fwrite(file->name,1,file_name_lenght,fs);
 
 }
 
-
+/*
+    Sposta la posizione all'interno del file che rappresenta il file system ad un blocco dato.
+*/
 void move_to_block(uint8_t block_num,uint8_t offset ,FILE* fs){
     uint16_t ret = fseek(fs,block_num*BLOCK_SIZE + offset,SEEK_SET);
 }
 
+
+/*
+    
+    Dato un blocco sposta la posizione all'interno del file che rappresenta il file system, si sposta 
+    al primo byte libero all'interno del blocco.
+    ritorna -1 se il blocco è pieno, altrimenti lo scostamento all'interno del blocco.
+    Se il blocco in esame è un inode questo va segnalato tramite il parametro is_inode.
+
+*/
 int8_t move_to_empty_space_in_block(uint8_t block_num,uint8_t is_inode,FILE* fs){
 
     uint8_t i = 0;
@@ -266,6 +297,7 @@ int8_t move_to_empty_space_in_block(uint8_t block_num,uint8_t is_inode,FILE* fs)
         fread(&ch,1,1,fs); 
         if(ch == 0)
             fseek(fs,start_pos + i,SEEK_SET);
+
     }
 
     if(i >= BLOCK_SIZE - offset) //Se il blocco è pieno!
@@ -282,7 +314,7 @@ Sposta la posizione all'interno del file all'ultimo blocco dati di un file a par
 ne assegna uno.
 */
 
-int8_t move_to_file_data_block(uint8_t inode_num, uint8_t* inode_table, uint8_t* free_space_table,FILE* fs){
+int8_t move_to_data_block(uint8_t inode_num, uint8_t* inode_table, uint8_t* free_space_table,FILE* fs){
 
     uint8_t i = 0;
     inode_t inode = read_inode(inode_num,inode_table,fs); 
@@ -293,7 +325,7 @@ int8_t move_to_file_data_block(uint8_t inode_num, uint8_t* inode_table, uint8_t*
     if(inode.index_vector[i] == 0){
         assign_block_to_inode(inode_num,inode_table,free_space_table,fs);
         inode= read_inode(inode_num,inode_table,fs);
-        return move_to_empty_space_in_block(inode.index_vector[i],0,fs);
+        return move_to_empty_space_in_block(inode.index_vector[i],0,fs); //in teoria si può sostituire con movetoblock 
     }
     else 
         return 1;
@@ -359,10 +391,13 @@ file_t* create_root_dir(){
     return new_file;
 }
 
-void sync_new_file(file_t* file, FILE* fs, uint8_t* inode_table,uint8_t* free_space_table){
+int8_t sync_new_file(file_t* file, FILE* fs, uint8_t* inode_table,uint8_t* free_space_table){
     
     uint8_t inode_num = get_free_inode_number(inode_table);
     uint8_t block_num = get_and_set_free_block(free_space_table,fs);
+    
+    if(block_num == 0)
+        return -1;
 
     file->inode_num = inode_num;
     assign_inode_to_block(file->inode_num, block_num, inode_table, free_space_table,fs);
@@ -374,20 +409,21 @@ void sync_new_file(file_t* file, FILE* fs, uint8_t* inode_table,uint8_t* free_sp
 
 }
 
-uint8_t add_file_to_dir(file_t* file,char* path ,FILE* fs, uint8_t* inode_table,uint8_t* free_space_table){
+int8_t new_file_to_dir(file_t* file,char* path ,FILE* fs, uint8_t* inode_table,uint8_t* free_space_table){
 
     uint8_t dir_inode_num;
     uint8_t ret;
 
-    sync_new_file(file,fs,inode_table,free_space_table);
-
     if(strcmp(path,"/") == 0)
         dir_inode_num = 0;
+    /*TODO ! 1 Altrimenti trova la dir dal path.
+             2 Check se la dir è piena prima di aggiungere il file in memoria.*/
 
-    ret = move_to_file_data_block(dir_inode_num,inode_table,free_space_table,fs);
+    sync_new_file(file,fs,inode_table,free_space_table);
+    ret = move_to_data_block(dir_inode_num,inode_table,free_space_table,fs);
 
     if(ret == -1) 
-        return 0;
+        return -1;
         
     write_file_info(file,fs);
         
@@ -415,9 +451,9 @@ int main(){
     file_t* root_dir = create_root_dir();
     sync_new_file(root_dir,fs,inode_table,free_space_table);
     file_t* test= create_test_file();
-    add_file_to_dir(test,"/",fs,inode_table,free_space_table);
-    add_file_to_dir(test,"/",fs,inode_table,free_space_table);
-    add_file_to_dir(test,"/",fs,inode_table,free_space_table);
+    new_file_to_dir(test,"/",fs,inode_table,free_space_table);
+    new_file_to_dir(test,"/",fs,inode_table,free_space_table);
+    new_file_to_dir(test,"/",fs,inode_table,free_space_table);
     fclose(fs);
     
 }
