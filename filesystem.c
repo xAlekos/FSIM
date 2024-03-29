@@ -9,7 +9,7 @@
 #define MAX_FILE_CONTENT 1024       //Ogni file può essere composto massimo da 4 blocchi 
 #define BLOCK_SIZE 256              
 #define MAX_BLOCKS_NUM 256
-#define MAX_BLOCKS_PER_NODE 252
+#define MAX_BLOCKS_PER_NODE 251
 #define MAX_INODES 256
 #define MAX_DIR_ENTRIES 256
 
@@ -34,6 +34,7 @@ del file rappresentato dall'inode.
 typedef struct inode{
 
     mode_t mode;
+    uint16_t size;
     uint8_t index_vector[MAX_BLOCKS_PER_NODE];
 
 }inode_t;
@@ -62,7 +63,7 @@ typedef struct file{
 
     uint8_t inode_num;
 
-    size_t size;
+    uint16_t size;
     mode_t mode;
     dir_entry_t entries[MAX_DIR_ENTRIES];
 
@@ -159,7 +160,9 @@ inode_t read_inode(uint8_t inode_num, filesystem_t* fs){
     move_to_block(block,0,fs);
     fread(&(inode.mode),4,1,fs->file);
     move_to_block(block,4,fs);
-    fread(&(inode.index_vector),1,252,fs->file);
+    fread(&(inode.mode),1,1,fs->file);
+    move_to_block(block,5,fs);
+    fread(&(inode.index_vector),1,251,fs->file);
     
     return inode;
 }
@@ -327,7 +330,7 @@ int16_t move_to_empty_space_in_block(uint8_t block_num,uint8_t is_inode,filesyst
     uint16_t start_pos;
 
     if(is_inode == 1)
-        offset = 4;
+        offset = 5;
 
     move_to_block(block_num,offset,fs);
     start_pos = ftell(fs->file);
@@ -364,7 +367,7 @@ uint8_t move_to_data_block(uint8_t inode_num, filesystem_t* fs){
     inode_t inode = read_inode(inode_num,fs); 
     uint16_t ret;
     while(inode.index_vector[i] != 0){
-        
+        //sono stupido! questa non ha senso chiamarla se l'inode non è l'ultimo!
         if(move_to_empty_space_in_block(inode.index_vector[i],0,fs) != -1)
             break;
         else
@@ -463,7 +466,7 @@ file_t* create_test_file(){
 
     file_t* new_file = malloc(sizeof(file_t));
     memmove(new_file->name,"Testa",5);
-    new_file->size = 13;
+    new_file->size = 0;
     new_file->mode = S_IFREG | 0755;
 
     return new_file;
@@ -491,7 +494,8 @@ int8_t sync_new_file(file_t* file, filesystem_t* fs){
     file->inode_num = inode_num;
     assign_inode_to_block(file->inode_num, block_num, fs);
     move_to_block(block_num,0,fs);
-    fwrite(&(file->mode),4,1,fs->file); //salva sul dispositivo di memorizzazione i metadati del file
+    fwrite(&(file->mode),sizeof(file->mode),1,fs->file); //salva sul dispositivo di memorizzazione i metadati del file
+    fwrite(&(file->size),sizeof(file->size),1,fs->file); 
     sync_fs(fs);
 
 
@@ -520,8 +524,8 @@ int8_t new_file_to_dir(file_t* file,char* path , filesystem_t* fs){
 
     if(strcmp(path,"/") == 0)
         dir_inode_num = 0;
-    /*TODO ! 1 Altrimenti trova la dir dal path.
-             2 Check se la dir è piena prima di aggiungere il file in memoria. FATTO*/
+    /*TODO ! 1 Altrimenti trova la dir dal path.*/
+             
 
     ret = is_inode_full(dir_inode_num,fs);
     
