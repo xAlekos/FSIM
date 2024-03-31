@@ -21,6 +21,7 @@ typedef struct filesystem{
     FILE* file;
     uint8_t* free_space_table;
     uint8_t* inode_table;
+    file_t* open_file;
 
 }filesystem_t;
 
@@ -288,17 +289,17 @@ void write_file_info(file_t* file,uint8_t dir_inode_num ,uint8_t starting_block,
     uint8_t file_name_lenght = strlen(file->name);
     uint8_t block = starting_block;
 
-    printf("write to: %d\n",ftell(fs->file));
+    printf("write to: %ld\n",ftell(fs->file));
     block = reach_new_block_if_full(dir_inode_num,block,fs);
     fwrite(&(file->inode_num),1,1,fs->file);
     block = reach_new_block_if_full(dir_inode_num,block,fs);
-    printf("write to: %d\n",ftell(fs->file));
+    printf("write to: %ld\n",ftell(fs->file));
     fwrite(&file_name_lenght,1,1,fs->file);
 
     while(i < file_name_lenght){
 
         block = reach_new_block_if_full(dir_inode_num,block,fs);
-        printf("write to: %d\n",ftell(fs->file));
+        printf("write to: %ld\n",ftell(fs->file));
         fwrite(file->name + i,1,1,fs->file);
         i++;
 
@@ -310,7 +311,7 @@ void write_file_info(file_t* file,uint8_t dir_inode_num ,uint8_t starting_block,
     Sposta la posizione all'interno del file che rappresenta il file system ad un blocco dato.
 */
 void move_to_block(uint8_t block_num,uint8_t offset ,filesystem_t* fs){
-    uint16_t ret = fseek(fs->file,block_num*BLOCK_SIZE + offset,SEEK_SET);
+    fseek(fs->file,block_num*BLOCK_SIZE + offset,SEEK_SET);
 }
 
 
@@ -365,7 +366,7 @@ uint8_t move_to_data_block(uint8_t inode_num, filesystem_t* fs){
 
     uint8_t i = 0;
     inode_t inode = read_inode(inode_num,fs); 
-    uint16_t ret;
+
     while(inode.index_vector[i] != 0){
         //sono stupido! questa non ha senso chiamarla se l'inode non è l'ultimo!
         if(move_to_empty_space_in_block(inode.index_vector[i],0,fs) != -1)
@@ -440,18 +441,20 @@ void sync_fs(filesystem_t* fs){
 }
 
 
-filesystem_t* init_fs(filesystem_t* fs){
+filesystem_t* init_fs(filesystem_t** fs){
     
     filesystem_t* new_fs = malloc(sizeof(filesystem_t));
     new_fs->free_space_table = init_freespace_table();
     new_fs->inode_table = init_inode_table();
-    new_fs->file = load_fs("./FS");
+    new_fs->file = load_fs("FS");
+    new_fs->open_file = NULL;
     format_fs(new_fs->file);
 
     if(new_fs->inode_table == NULL || new_fs->free_space_table == NULL)
         return NULL;
 
-    sync_fs(new_fs);    
+    sync_fs(new_fs);
+    *fs = new_fs;    
     return new_fs;
 
 }
@@ -497,9 +500,9 @@ int8_t sync_new_file(file_t* file, filesystem_t* fs){
     fwrite(&(file->mode),sizeof(file->mode),1,fs->file); //salva sul dispositivo di memorizzazione i metadati del file
     fwrite(&(file->size),sizeof(file->size),1,fs->file); 
     sync_fs(fs);
-
-
+    return block_num;
 }
+
 
 uint8_t is_inode_full(uint8_t dir_inode_num, filesystem_t* fs){
     
@@ -536,29 +539,40 @@ int8_t new_file_to_dir(file_t* file,char* path , filesystem_t* fs){
     block = move_to_data_block(dir_inode_num,fs);
     write_file_info(file,dir_inode_num,block,fs);
     
+    return 0;
 }
 
-
-
-int main(){
-
-    //format_fs(fs);
+uint8_t read_dir(uint8_t inode_num, filesystem_t* fs){
+    file_t dir; 
+    inode_t dir_inode = read_inode(inode_num,fs);
+    uint8_t block_num;
+    uint8_t last_file_name = 0; 
+    uint8_t i = 0;
+    uint8_t j = 0;
+    uint8_t k = 0;
     
-    filesystem_t* filesystem = init_fs(filesystem);
+    while(dir_inode.index_vector[i] != 0){
+        
+        move_to_block(dir_inode.index_vector[i],0,fs);
+        //loop che gira fino a che non finisci il blocco(leggi BLOCKSIZE BYTE, POI CAMBIA BLOCCO. LEGGI 1 BYTE ALLA VOLTA!)
+        //per far sì che se finisce lo spazio nel blocco si passi al blocco successivo. ogni dir entries dura
+        //finchè non viene scritto inode, e nome.
+        //come su write_file_info fai una funzione che prima di ogni lettura controlla la posizione all'interno del blocco,
+        //quando non c'è più spazio passa al blocco successivo presente nell'inode. Quando questa funzione
+        //ritorna un blocco vuoto termina il loop (hai letto tutto.) Così dovrebe venire facile facile 
+        //bellina bellina
+            fread(&dir.entries[k].inode_index,1,1,fs->file);
+            fread(&dir.entries[k].name_lenght,1,1,fs->file);
+            last_file_name = dir.entries[k].name_lenght;
+
+        }
+        
+        
+        
+        
 
 
-    file_t* root_dir = create_root_dir();
-    sync_new_file(root_dir,filesystem);
-    file_t* test= create_test_file();
-
-    for(int i = 0; i < 65;i++)
-        new_file_to_dir(test,"/",filesystem);
-    while(getchar() == 'a'){
-        new_file_to_dir(test,"/",filesystem);
-        getchar();
     }
-    //new_file_to_dir(test,"/",filesystem);
 
-    fclose(filesystem->file);
-    
+
 }

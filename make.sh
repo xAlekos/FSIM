@@ -1,1 +1,1 @@
-gcc -o fsim filesystem.c
+gcc -Wall fsim.c `pkg-config fuse3 --cflags --libs` -o fsim
