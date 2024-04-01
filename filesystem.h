@@ -16,14 +16,9 @@
 #define SEEK_FREESPACE_TABLE_SET 256
 
 
-typedef struct filesystem{
 
-    FILE* file;
-    uint8_t* free_space_table;
-    uint8_t* inode_table;
-    file_t* open_file;
 
-}filesystem_t;
+
 
 /*
 
@@ -54,6 +49,7 @@ typedef struct dir_entry{
 }dir_entry_t;
 
 
+
 /*
 Rappresentazione in memoria di un file.
 */
@@ -69,6 +65,16 @@ typedef struct file{
     dir_entry_t entries[MAX_DIR_ENTRIES];
 
 }file_t;
+
+typedef struct filesystem{
+
+    FILE* file;
+    uint8_t* free_space_table;
+    uint8_t* inode_table;
+    file_t* open_file;
+
+}filesystem_t;
+
 
 
 uint16_t block_free_space_left(uint8_t block_num,filesystem_t* fs);
@@ -289,17 +295,17 @@ void write_file_info(file_t* file,uint8_t dir_inode_num ,uint8_t starting_block,
     uint8_t file_name_lenght = strlen(file->name);
     uint8_t block = starting_block;
 
-    printf("write to: %ld\n",ftell(fs->file));
+    //printf("write to: %ld\n",ftell(fs->file));
     block = reach_new_block_if_full(dir_inode_num,block,fs);
     fwrite(&(file->inode_num),1,1,fs->file);
     block = reach_new_block_if_full(dir_inode_num,block,fs);
-    printf("write to: %ld\n",ftell(fs->file));
+    // printf("write to: %ld\n",ftell(fs->file));
     fwrite(&file_name_lenght,1,1,fs->file);
 
     while(i < file_name_lenght){
 
         block = reach_new_block_if_full(dir_inode_num,block,fs);
-        printf("write to: %ld\n",ftell(fs->file));
+         //printf("write to: %ld\n",ftell(fs->file));
         fwrite(file->name + i,1,1,fs->file);
         i++;
 
@@ -542,37 +548,51 @@ int8_t new_file_to_dir(file_t* file,char* path , filesystem_t* fs){
     return 0;
 }
 
-uint8_t read_dir(uint8_t inode_num, filesystem_t* fs){
-    file_t dir; 
-    inode_t dir_inode = read_inode(inode_num,fs);
-    uint8_t block_num;
-    uint8_t last_file_name = 0; 
-    uint8_t i = 0;
-    uint8_t j = 0;
-    uint8_t k = 0;
-    
-    while(dir_inode.index_vector[i] != 0){
-        
-        move_to_block(dir_inode.index_vector[i],0,fs);
-        //loop che gira fino a che non finisci il blocco(leggi BLOCKSIZE BYTE, POI CAMBIA BLOCCO. LEGGI 1 BYTE ALLA VOLTA!)
-        //per far sì che se finisce lo spazio nel blocco si passi al blocco successivo. ogni dir entries dura
-        //finchè non viene scritto inode, e nome.
-        //come su write_file_info fai una funzione che prima di ogni lettura controlla la posizione all'interno del blocco,
-        //quando non c'è più spazio passa al blocco successivo presente nell'inode. Quando questa funzione
-        //ritorna un blocco vuoto termina il loop (hai letto tutto.) Così dovrebe venire facile facile 
-        //bellina bellina
-            fread(&dir.entries[k].inode_index,1,1,fs->file);
-            fread(&dir.entries[k].name_lenght,1,1,fs->file);
-            last_file_name = dir.entries[k].name_lenght;
 
+
+
+/*
+    OK non male
+
+*/
+void read_dir_entries(file_t* dir ,inode_t inode ,uint8_t last_block ,filesystem_t* fs){
+
+    
+    uint8_t new_block = last_block;
+    uint16_t i = 0;
+    uint16_t k = 0;
+    uint16_t last_entry = 0;
+    move_to_block(last_block,0,fs);  
+    
+
+    while(i < BLOCK_SIZE && inode.index_vector[k] != 0){
+
+        if(block_free_space_left(last_block, fs) == 0){
+            k++;
+            new_block = inode.index_vector[k];
+            move_to_block(new_block,0,fs);
+        }
+
+        fread(&dir->entries[last_entry].inode_index, 1,1,fs->file);
+        if(block_free_space_left(last_block, fs) == 0){
+            k++;
+            new_block = inode.index_vector[k];
+            move_to_block(new_block,0,fs);
         }
         
+        fread(&dir->entries[last_entry].name_lenght, 1,1,fs->file);
         
-        
-        
-
-
-    }
-
+        for(uint16_t j = 0; i < (dir->entries[last_entry].name_lenght) ; j++){
+            if(block_free_space_left(last_block, fs) == 0){
+                k++;
+                new_block = inode.index_vector[k];
+                move_to_block(new_block,0,fs);
+            }
+            fread(&dir->entries[last_entry].name, 1,1,fs->file);
+        }
+    
+        last_entry++;
+    }        
 
 }
+
