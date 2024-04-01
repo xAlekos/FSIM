@@ -166,9 +166,7 @@ inode_t read_inode(uint8_t inode_num, filesystem_t* fs){
     uint8_t block = fs->inode_table[inode_num];
     move_to_block(block,0,fs);
     fread(&(inode.mode),4,1,fs->file);
-    move_to_block(block,4,fs);
-    fread(&(inode.mode),1,1,fs->file);
-    move_to_block(block,5,fs);
+    fread(&(inode.size),1,1,fs->file);
     fread(&(inode.index_vector),1,251,fs->file);
     
     return inode;
@@ -486,7 +484,7 @@ file_t* create_root_dir(){
 
     file_t* new_file = malloc(sizeof(file_t));
 
-    new_file->mode = S_IFDIR | 0444;
+    new_file->mode = S_IFDIR | 0755;
     new_file->size = 0;
     memset(new_file->entries,0,sizeof(dir_entry_t) * MAX_DIR_ENTRIES);
     return new_file;
@@ -544,7 +542,7 @@ int8_t new_file_to_dir(file_t* file,char* path , filesystem_t* fs){
     sync_new_file(file,fs);
     block = move_to_data_block(dir_inode_num,fs);
     write_file_info(file,dir_inode_num,block,fs);
-    
+    fflush(fs->file);
     return 0;
 }
 

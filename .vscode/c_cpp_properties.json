@@ -4,7 +4,8 @@
             "name": "Linux",
             "includePath": [
                 "${workspaceFolder}/**",
-                "/usr/include/fuse3"
+                "/usr/include/fuse3",
+                "/usr/local/include/fuse3"
             ],
             "defines": [],
             "cStandard": "c17",
