@@ -16,14 +16,10 @@
 #define SEEK_FREESPACE_TABLE_SET 256
 
 
-
-
-
-
 /*
 
 Blocco di 256 byte in cui i primi 4 byte rappresentano i permessi ed il tipo del file, 
-i seguenti 252 byte rappresentano gli indici dei blocchi all'interno dei quali si trovano i dati
+i seguenti 251 byte rappresentano gli indici dei blocchi all'interno dei quali si trovano i dati
 del file rappresentato dall'inode.
 
 */
@@ -44,7 +40,7 @@ typedef struct dir_entry{
     uint8_t inode_index;
     uint8_t name_lenght;
 
-    char name[MAX_FILE_NAME];
+    char name[MAX_FILE_NAME + 1];
 
 }dir_entry_t;
 
@@ -76,12 +72,13 @@ typedef struct filesystem{
 }filesystem_t;
 
 
-
+uint8_t inode_from_path(const char* path,filesystem_t* fs);
 uint16_t block_free_space_left(uint8_t block_num,filesystem_t* fs);
 void move_to_block(uint8_t block_num,uint8_t offset ,filesystem_t* fs);
 uint8_t assign_block_to_inode(uint8_t inode,filesystem_t* fs);
 void sync_fs(filesystem_t* fs);
 int8_t new_file_to_dir(file_t file,char* path , filesystem_t* fs);
+
 /*
     Carica un file system da un file
 */
@@ -125,6 +122,7 @@ void sync_inode_table(filesystem_t* fs){
     
     fseek(fs->file,0,SEEK_SET);
     fwrite(fs->inode_table,sizeof(uint8_t),MAX_INODES,fs->file);
+    fflush(fs->file);
 
 }
 
@@ -164,9 +162,16 @@ inode_t read_inode(uint8_t inode_num, filesystem_t* fs){
 
     inode_t inode;
     uint8_t block = fs->inode_table[inode_num];
+    
+    int pos;
+    inode.size = 0;
+
     move_to_block(block,0,fs);
+    pos = ftell(fs->file);
     fread(&(inode.mode),4,1,fs->file);
+    pos = ftell(fs->file);
     fread(&(inode.size),1,1,fs->file);
+    pos = ftell(fs->file);
     fread(&(inode.index_vector),1,251,fs->file);
     
     return inode;
@@ -200,6 +205,7 @@ void sync_freespace_table(filesystem_t* fs){
 
     fseek(fs->file,SEEK_FREESPACE_TABLE_SET,0);
     fwrite(fs->free_space_table,sizeof(uint8_t),MAX_BLOCKS_NUM,fs->file);
+    fflush(fs->file);
 
 }
 
@@ -363,7 +369,8 @@ int16_t move_to_empty_space_in_block(uint8_t block_num,uint8_t is_inode,filesyst
 
 /*
 Sposta la posizione all'interno del file all'ultimo blocco dati di un file a partire dal numero di inode, non dovesse essere presente un blocco dati libero,
-ne assegna uno.
+ne assegna uno. TODO SOSTITUIRE, QUESTA VA USATA SOLO SE NON SI TROVA NESSUNO SPAZIO LIBERO NEI BLOCCHI GIA' OCCUPATI.
+IN TAL CASO SI VA ALLA FINE DELLO SPAZIO DISPONIBILE PER IL FILE CON QEUSTA FUNZIONE
 */
 
 uint8_t move_to_data_block(uint8_t inode_num, filesystem_t* fs){
@@ -458,7 +465,8 @@ filesystem_t* init_fs(filesystem_t** fs){
         return NULL;
 
     sync_fs(new_fs);
-    *fs = new_fs;    
+    *fs = new_fs;
+
     return new_fs;
 
 }
@@ -482,8 +490,10 @@ int8_t sync_new_file(file_t* file, filesystem_t* fs){
     assign_inode_to_block(inode_num, block_num, fs);
     move_to_block(block_num,0,fs);
     fwrite(&(file->mode) ,sizeof(file->mode),1,fs->file); //salva sul dispositivo di memorizzazione i metadati del file
-    fwrite(&(file->size) ,sizeof(file->size),1,fs->file); 
+    fwrite(&(file->size) ,sizeof(file->size),1,fs->file);
+    fflush(fs->file); 
     sync_fs(fs);
+    
     return block_num;
 }
 
@@ -514,6 +524,24 @@ void sync_test_files(filesystem_t* fs,uint8_t num){
 
 }
 
+void sync_test_dir(filesystem_t* fs,uint8_t num){
+
+    file_t new_file;
+
+    new_file.mode = S_IFDIR | 0755;
+    new_file.size = 0;
+
+    for(int i = 0; i < num ; i++){
+
+    snprintf(new_file.name,256,"DirTest_%d",i);
+    new_file_to_dir(new_file,"/",fs);
+
+    }
+
+}
+
+
+
 uint8_t is_inode_full(uint8_t dir_inode_num, filesystem_t* fs){
     
     uint8_t i = 0;
@@ -522,9 +550,13 @@ uint8_t is_inode_full(uint8_t dir_inode_num, filesystem_t* fs){
     while(inode.index_vector[i] != 0 && move_to_empty_space_in_block(inode.index_vector[i],0,fs) == -1){
         i++;
     }
+
     if(i == MAX_BLOCKS_PER_NODE && inode.index_vector[i] != 0 && move_to_empty_space_in_block(inode.index_vector[i],0,fs) == -1)
+        
         return 1;
+
     else 
+
         return 0;
     
 }
@@ -537,7 +569,8 @@ int8_t new_file_to_dir(file_t file,char* path , filesystem_t* fs){
 
     if(strcmp(path,"/") == 0)
         dir_inode_num = 0;
-    /*TODO ! 1 Altrimenti trova la dir dal path.*/
+    else
+        dir_inode_num = inode_from_path(path,fs);
              
 
     ret = is_inode_full(dir_inode_num,fs);
@@ -549,24 +582,18 @@ int8_t new_file_to_dir(file_t file,char* path , filesystem_t* fs){
     block = move_to_data_block(dir_inode_num,fs);
     write_file_info(file,dir_inode_num,block,fs);
     fflush(fs->file);
+
     return 0;
 }
 
-
-
-
-/*
-    OK non male
-
-*/
 void read_dir_entries(file_t* dir ,inode_t inode , filesystem_t* fs){
 
     
     uint8_t new_block = inode.index_vector[0];
     uint16_t k = 0;
     uint16_t last_entry = 0;
+
     move_to_block(new_block,0,fs);  
-    
 
     while(inode.index_vector[k] != 0){
 
@@ -595,6 +622,7 @@ void read_dir_entries(file_t* dir ,inode_t inode , filesystem_t* fs){
             }
 
             fread(&(dir->entries[last_entry].name[i]), 1,1,fs->file);
+            dir->entries[last_entry].name[i+1] = '\0';
         }
     
         last_entry++;
@@ -603,3 +631,88 @@ void read_dir_entries(file_t* dir ,inode_t inode , filesystem_t* fs){
 
 }
 
+/*
+
+Tokenizzazione path e lookup
+
+*/
+
+
+uint16_t tokenize_path(const char* path, char** tokens_buffer){
+    
+    char path_buffer[1000];
+    strcpy(path_buffer,path);
+    int n_tokens = 0;
+    char* saveptr; //Usato per garantire la rientranza di strtok_r
+    char* path_token = strtok_r(path_buffer,"/",&saveptr);
+    
+    while(path_token != NULL){
+        
+        strcpy(tokens_buffer[n_tokens],path_token);
+        path_token = strtok_r(NULL,"/",&saveptr);
+        n_tokens++;
+    }
+
+    return n_tokens;
+}
+
+uint8_t get_dir_element_inode(char* name ,uint8_t inode_num,filesystem_t* fs){
+    
+    file_t dir;
+    inode_t dir_inode = read_inode(inode_num,fs);
+    uint16_t i = 0;
+    //TODO AGGIUNGERE CHECK SE L'ELEMENTO E' UNA DIRECTORY
+    read_dir_entries(&dir,dir_inode,fs);
+
+    while(i < MAX_DIR_ENTRIES && strcmp(dir.entries[i].name, name) != 0){
+        i++;
+    }
+
+    if(strcmp(dir.entries[i].name, name) == 0)
+        return dir.entries[i].inode_index;
+    else
+        return 0;
+
+}
+
+
+uint8_t inode_from_path(const char* path,filesystem_t* fs){
+	
+	if(strcmp(path,"/") == 0)
+		return 0;
+
+    char* tokens[500];
+    uint8_t i = 0;
+
+    for(int i = 0 ; i<500; i++)
+        tokens[i] = malloc(500);
+
+    uint16_t n_tokens = tokenize_path(path,tokens);
+
+    if(n_tokens == 1)
+        return get_dir_element_inode(tokens[0],0,fs);
+
+
+    uint8_t last_element_inode = get_dir_element_inode(tokens[i++],0,fs);
+
+    if(last_element_inode == 0)
+        return 0;
+
+    n_tokens--;
+    
+    while(n_tokens>0){
+        last_element_inode = get_dir_element_inode(tokens[i++],last_element_inode,fs);
+        
+        if(last_element_inode == 0)
+            return 0;
+
+        n_tokens--;
+    }
+
+    for(int j = 0 ; j<500; j++)
+        free(tokens[j]);
+
+   return last_element_inode;
+}
+ 
+/*-------------------------*/

@@ -42,6 +42,7 @@ static void *hello_init(struct fuse_conn_info *conn,
 
 	init_root_dir(filesystem);
 	sync_test_files(filesystem,50);
+	sync_test_dir(filesystem,5);
 
 	return NULL;
 }
@@ -50,19 +51,33 @@ static int hello_getattr(const char *path, struct stat *stbuf,
 			 struct fuse_file_info *fi)
 {
 	(void) fi;
-	int res = 0;
 	inode_t inode;
+	uint8_t inode_num; 
+	printf("getattr %s\n",path);
 
 	memset(stbuf, 0, sizeof(struct stat));
 	if (strcmp(path, "/") == 0) {
-		inode = read_inode(0,filesystem);
+		inode_num = 0;
+		inode = read_inode(inode_num,filesystem);
 		stbuf->st_mode = inode.mode;
 		stbuf->st_size = inode.size;
 		stbuf->st_nlink = 2;
-	} else
-		res = -ENOENT;
-
-	return res;
+		return 0;
+	} 
+	
+	inode_num = inode_from_path(path,filesystem);
+	
+	if(inode_num != 0){
+		inode = read_inode(inode_num,filesystem);	
+		stbuf->st_mode = inode.mode;
+		stbuf->st_size = inode.size;
+		stbuf->st_nlink = 2;
+		return 0;
+	}
+	else
+		return -ENOENT;
+	
+	return 0;
 }
 
 static int hello_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
@@ -72,6 +87,7 @@ static int hello_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 	(void) offset;
 	(void) fi;
 	(void) flags;
+	printf("readdir %s\n",path);
 
 	if (strcmp(path, "/") != 0)
 		return -ENOENT;
@@ -94,6 +110,8 @@ static int hello_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 
 static int hello_open(const char *path, struct fuse_file_info *fi)
 {
+
+	printf("open %s\n",path);
 	if ((fi->flags & O_ACCMODE) != O_RDONLY)
 		return -EACCES;
 
