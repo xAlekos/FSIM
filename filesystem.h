@@ -44,7 +44,7 @@ typedef struct dir_entry{
     uint8_t inode_index;
     uint8_t name_lenght;
 
-    char* name[MAX_FILE_NAME];
+    char name[MAX_FILE_NAME];
 
 }dir_entry_t;
 
@@ -81,7 +81,7 @@ uint16_t block_free_space_left(uint8_t block_num,filesystem_t* fs);
 void move_to_block(uint8_t block_num,uint8_t offset ,filesystem_t* fs);
 uint8_t assign_block_to_inode(uint8_t inode,filesystem_t* fs);
 void sync_fs(filesystem_t* fs);
-
+int8_t new_file_to_dir(file_t file,char* path , filesystem_t* fs);
 /*
     Carica un file system da un file
 */
@@ -287,15 +287,15 @@ uint8_t reach_new_block_if_full(uint8_t inode_num,uint8_t starting_block,filesys
     lunghezza del nome e nome del file. Queste informazioni vanno scritte all'interno di un blocco dati
     facente parte di una directory, è dunque necessario spostarsi nel blocco corretto prima di chimare questa funzione.
 */
-void write_file_info(file_t* file,uint8_t dir_inode_num ,uint8_t starting_block,filesystem_t* fs){
+void write_file_info(file_t file,uint8_t dir_inode_num ,uint8_t starting_block,filesystem_t* fs){
 
     uint8_t i = 0;
-    uint8_t file_name_lenght = strlen(file->name);
+    uint8_t file_name_lenght = strlen(file.name);
     uint8_t block = starting_block;
 
     //printf("write to: %ld\n",ftell(fs->file));
     block = reach_new_block_if_full(dir_inode_num,block,fs);
-    fwrite(&(file->inode_num),1,1,fs->file);
+    fwrite(&(file.inode_num),1,1,fs->file);
     block = reach_new_block_if_full(dir_inode_num,block,fs);
     // printf("write to: %ld\n",ftell(fs->file));
     fwrite(&file_name_lenght,1,1,fs->file);
@@ -304,11 +304,11 @@ void write_file_info(file_t* file,uint8_t dir_inode_num ,uint8_t starting_block,
 
         block = reach_new_block_if_full(dir_inode_num,block,fs);
          //printf("write to: %ld\n",ftell(fs->file));
-        fwrite(file->name + i,1,1,fs->file);
+        fwrite(file.name + i,1,1,fs->file);
         i++;
 
     }
-
+    fflush(fs->file);
 }
 
 /*
@@ -441,7 +441,7 @@ void sync_fs(filesystem_t* fs){
     
     sync_inode_table(fs);
     sync_freespace_table(fs);
-
+    fflush(fs->file);
 }
 
 
@@ -469,44 +469,50 @@ filesystem_t* init_fs(filesystem_t** fs){
 
 /*Manipolazione dei file*/
 
-file_t* create_test_file(){
-
-    file_t* new_file = malloc(sizeof(file_t));
-    memmove(new_file->name,"Testa",5);
-    new_file->size = 0;
-    new_file->mode = S_IFREG | 0755;
-
-    return new_file;
-
-}
-
-file_t* create_root_dir(){
-
-    file_t* new_file = malloc(sizeof(file_t));
-
-    new_file->mode = S_IFDIR | 0755;
-    new_file->size = 0;
-    memset(new_file->entries,0,sizeof(dir_entry_t) * MAX_DIR_ENTRIES);
-    return new_file;
-}
-
 int8_t sync_new_file(file_t* file, filesystem_t* fs){
     
     uint8_t inode_num = get_free_inode_number(fs);
     uint8_t block_num = get_and_set_free_block(fs);
-    
+
     if(block_num == 0)
         return -1;
 
     file->inode_num = inode_num;
-    assign_inode_to_block(file->inode_num, block_num, fs);
+
+    assign_inode_to_block(inode_num, block_num, fs);
     move_to_block(block_num,0,fs);
-    fwrite(&(file->mode),sizeof(file->mode),1,fs->file); //salva sul dispositivo di memorizzazione i metadati del file
-    fwrite(&(file->size),sizeof(file->size),1,fs->file); 
+    fwrite(&(file->mode) ,sizeof(file->mode),1,fs->file); //salva sul dispositivo di memorizzazione i metadati del file
+    fwrite(&(file->size) ,sizeof(file->size),1,fs->file); 
     sync_fs(fs);
     return block_num;
 }
 
+
+void init_root_dir(filesystem_t* fs){
+
+    file_t new_file;
+
+    new_file.mode = S_IFDIR | 0755;
+    new_file.size = 0;
+    sync_new_file(&new_file,fs);
+
+}
+
+void sync_test_files(filesystem_t* fs,uint8_t num){
+
+    file_t new_file;
+
+    new_file.mode = S_IFREG | 0755;
+    new_file.size = 0;
+
+    for(int i = 0; i < num ; i++){
+
+    snprintf(new_file.name,256,"Test_%d",i);
+    new_file_to_dir(new_file,"/",fs);
+
+    }
+
+}
 
 uint8_t is_inode_full(uint8_t dir_inode_num, filesystem_t* fs){
     
@@ -523,7 +529,7 @@ uint8_t is_inode_full(uint8_t dir_inode_num, filesystem_t* fs){
     
 }
 
-int8_t new_file_to_dir(file_t* file,char* path , filesystem_t* fs){
+int8_t new_file_to_dir(file_t file,char* path , filesystem_t* fs){
 
     uint8_t dir_inode_num;
     uint8_t ret;
@@ -539,7 +545,7 @@ int8_t new_file_to_dir(file_t* file,char* path , filesystem_t* fs){
     if(ret == 1)
         return -1;
 
-    sync_new_file(file,fs);
+    sync_new_file(&file,fs);
     block = move_to_data_block(dir_inode_num,fs);
     write_file_info(file,dir_inode_num,block,fs);
     fflush(fs->file);
@@ -553,44 +559,47 @@ int8_t new_file_to_dir(file_t* file,char* path , filesystem_t* fs){
     OK non male
 
 */
-void read_dir_entries(file_t* dir ,inode_t inode ,uint8_t last_block ,filesystem_t* fs){
+void read_dir_entries(file_t* dir ,inode_t inode , filesystem_t* fs){
 
     
-    uint8_t new_block = last_block;
-    uint16_t i = 0;
+    uint8_t new_block = inode.index_vector[0];
     uint16_t k = 0;
     uint16_t last_entry = 0;
-    move_to_block(last_block,0,fs);  
+    move_to_block(new_block,0,fs);  
     
 
-    while(i < BLOCK_SIZE && inode.index_vector[k] != 0){
+    while(inode.index_vector[k] != 0){
 
-        if(block_free_space_left(last_block, fs) == 0){
+        if(block_free_space_left(new_block, fs) == 0){
             k++;
             new_block = inode.index_vector[k];
             move_to_block(new_block,0,fs);
         }
 
-        fread(&dir->entries[last_entry].inode_index, 1,1,fs->file);
-        if(block_free_space_left(last_block, fs) == 0){
+        fread(&(dir->entries[last_entry].inode_index), 1,1,fs->file);
+
+        if(block_free_space_left(new_block, fs) == 0){
             k++;
             new_block = inode.index_vector[k];
             move_to_block(new_block,0,fs);
         }
+
+        fread(&(dir->entries[last_entry].name_lenght), 1,1,fs->file);
         
-        fread(&dir->entries[last_entry].name_lenght, 1,1,fs->file);
-        
-        for(uint16_t j = 0; i < (dir->entries[last_entry].name_lenght) ; j++){
-            if(block_free_space_left(last_block, fs) == 0){
+        for(uint16_t i = 0; i < (dir->entries[last_entry].name_lenght) ; i++){
+
+            if(block_free_space_left(new_block, fs) == 0){
                 k++;
                 new_block = inode.index_vector[k];
                 move_to_block(new_block,0,fs);
             }
-            fread(&dir->entries[last_entry].name, 1,1,fs->file);
+
+            fread(&(dir->entries[last_entry].name[i]), 1,1,fs->file);
         }
     
         last_entry++;
     }        
+    dir->entries[last_entry].inode_index = 0;
 
 }
 

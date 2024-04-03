@@ -39,16 +39,10 @@ static void *hello_init(struct fuse_conn_info *conn,
 {
 	(void) conn;
 	cfg->kernel_cache = 1;
-	file_t* root = create_root_dir();
-	sync_new_file(root,filesystem);
-	free(root);
-	file_t* test_file = create_test_file();
-	new_file_to_dir(test_file,"/",filesystem);
-	new_file_to_dir(test_file,"/",filesystem);
-	new_file_to_dir(test_file,"/",filesystem);
-	new_file_to_dir(test_file,"/",filesystem);
-	new_file_to_dir(test_file,"/",filesystem);
-	free(test_file);
+
+	init_root_dir(filesystem);
+	sync_test_files(filesystem,50);
+
 	return NULL;
 }
 
@@ -81,9 +75,19 @@ static int hello_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 
 	if (strcmp(path, "/") != 0)
 		return -ENOENT;
+	
+	file_t dir; 
+	inode_t inode = read_inode(0,filesystem);
+	read_dir_entries(&dir,inode,filesystem);
+	uint16_t i;
 
 	filler(buf, ".", NULL, 0, 0);
 	filler(buf, "..", NULL, 0, 0);
+
+	while(dir.entries[i].inode_index != 0){
+		filler(buf, dir.entries[i].name, NULL, 0, 0);
+		i++;
+	}
 
 	return 0;
 }
@@ -93,7 +97,7 @@ static int hello_open(const char *path, struct fuse_file_info *fi)
 	if ((fi->flags & O_ACCMODE) != O_RDONLY)
 		return -EACCES;
 
-	return 0;
+	return 0; 
 }
 
 static const struct fuse_operations hello_oper = {
