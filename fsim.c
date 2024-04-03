@@ -118,11 +118,81 @@ static int hello_open(const char *path, struct fuse_file_info *fi)
 	return 0; 
 }
 
+/*
+
+static int myfs_create(const char* path, mode_t mode, struct fuse_file_info * fi){
+	//TODO sistemare rilevazione errori
+	(void)fi;
+	filenode_t* parent_dir = GetParentDir(path);
+	
+	char* name = FileNameFromPath(path);
+	filenode_t* newfile = AddNewFileToDir(parent_dir, name, NULL , S_IFREG | mode, REG , NULL);
+	if(newfile == NULL)
+		return -EEXIST;
+	free(name);
+	printf("create file %s\n",path);
+	return 0;
+*/
+
+/*
+static int myfs_write(const char *path, const char *buf, size_t size, off_t offset,
+		      struct fuse_file_info *fi)
+{
+	(void) fi;
+
+	uint8_t inode_num = inode_from_path(path,filesystem);
+
+	printf("Writing to file %s\n",path);
+
+	if(inode_num == 0)
+		return -ENOENT;
+
+	if(offset + size < MAX_FILE_SIZE){
+		//funzione write
+	}
+
+	else
+		size = 0;
+		
+	//nuove dimensioni = (dimensioni_file - (dimensioni_file - offset)) + (size);
+	return size;
+}*/
+
+/*static int myfs_read(const char *path, char *buf, size_t size, off_t offset,
+		      struct fuse_file_info *fi)
+{
+	(void) fi;
+
+	uint8_t inode_num = inode_from_path(path,filesystem);
+	size_t len;
+	printf("Reading file %s\n",path);
+	
+	if(inode_num == 0)
+		return -ENOENT;
+		
+	//if file->size == 0 return 0
+
+	len = //dimenisoni file
+
+	if (offset < len) {
+		if (offset + size > len)
+			size = len - offset;
+		memcpy(buf, req_file->content + offset, size);
+	} else
+		size = 0;
+
+	return size;
+}
+*/
+
 static const struct fuse_operations hello_oper = {
 	.init           = hello_init,
 	.getattr	= hello_getattr,
 	.readdir	= hello_readdir,
 	.open		= hello_open,
+	//.read		= hello_read
+	//.write	= hello_write
+	//.create		= hello_create
 };
 
 int main(int argc, char *argv[])
