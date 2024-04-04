@@ -318,6 +318,8 @@ void write_file_info(file_t file,uint8_t dir_inode_num ,uint8_t starting_block,f
 }
 
 
+
+
 /*
     Sposta la posizione all'interno del file che rappresenta il file system ad un blocco dato.
 */
@@ -497,6 +499,15 @@ int8_t sync_new_file(file_t* file, filesystem_t* fs){
 }
 
 
+void update_file_size(uint8_t file_inode ,uint16_t new_size,filesystem_t* fs){
+    
+    uint16_t inode_block = fs->inode_table[file_inode];
+    move_to_block(inode_block,4,fs);
+    fwrite(&new_size,1,1,fs->file);
+
+}
+
+
 void init_root_dir(filesystem_t* fs){
 
     file_t new_file;
@@ -655,6 +666,11 @@ uint16_t tokenize_path(const char* path, char** tokens_buffer){
     return n_tokens;
 }
 
+
+/*
+Ritorna il numero di inode di un elemento all'interno di una directory
+dato il nome.
+*/
 uint8_t get_dir_element_inode(char* name ,uint8_t inode_num,filesystem_t* fs){
     
     file_t dir;
@@ -713,13 +729,55 @@ uint8_t inode_from_path(const char* path,filesystem_t* fs){
 
    return last_element_inode;
 }
+
+
+/*
+Dato un path ritorna la directory che contiene il file individuato dal path
+
+@path il path del file di cui si vuole ottenere riferimento alla directory in cui è contenuto
+*/
+uint8_t parent_dir_inode_from_path(const char* path,filesystem_t* fs){
+
+    char* tokens[500];
+    uint8_t i = 0;
+
+    for(int i = 0 ; i<500; i++)
+        tokens[i] = malloc(500);
+
+    uint16_t n_tokens = tokenize_path(path,tokens);
+
+    if(n_tokens <= 1)
+        return 0;
+
+    uint8_t last_file = get_dir_element_inode(tokens[i++],0,fs);
+
+    if(last_file == 0)
+        return 0;
+
+    n_tokens--;
+    
+    while(n_tokens>1){
+        last_file = get_dir_element_inode(tokens[i++],last_file,fs);
+        
+        if(last_file == 0)
+            return 0;
+
+        n_tokens--;
+    }
+
+    for(int j = 0 ; j<500; j++)
+        free(tokens[j]);
+
+   return last_file;
+
+}
  
 /*-------------------------*/
 
 
 /*Operazioni */
 
-void write_to_file(uint8_t inode_num,const char* buf, size_t size,off_t offset,filesystem_t* fs){
+uint16_t write_to_file(uint8_t inode_num,const char* buf, size_t size,off_t offset,filesystem_t* fs){
 
     uint8_t i = 0;
     uint16_t j = 0;
@@ -729,20 +787,14 @@ void write_to_file(uint8_t inode_num,const char* buf, size_t size,off_t offset,f
 
     while(i < block_offset){
 
-        if(inode.index_vector[i] == 0){
-
+        if(inode.index_vector[i] == 0)
             inode.index_vector[i] = assign_block_to_inode(inode_num,fs);
-
-        }
-
         i++;
+
     }
 
-        if(inode.index_vector[i] == 0){
-        
-        inode.index_vector[i] = assign_block_to_inode(inode_num,fs);
-
-        }
+        if(inode.index_vector[i] == 0)   
+            inode.index_vector[i] = assign_block_to_inode(inode_num,fs);
 
     block = inode.index_vector[i];
     move_to_block(block,0,fs);
@@ -750,15 +802,16 @@ void write_to_file(uint8_t inode_num,const char* buf, size_t size,off_t offset,f
     while(j < size){
 
         block = reach_new_block_if_full(inode_num,block,fs);
-        printf("%ld",ftell(fs->file));
         fwrite(buf + j,1,1,fs->file);
         j++;
 
     }
 
+    uint16_t new_size = (inode.size - (inode.size - offset)) + size;
+    update_file_size(inode_num,new_size,fs);
 
     fflush(fs->file);
-    
+    return new_size;
 }
 
 

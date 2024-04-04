@@ -39,6 +39,7 @@ static void *hello_init(struct fuse_conn_info *conn,
 {
 	(void) conn;
 	cfg->kernel_cache = 1;
+	cfg->use_ino = 1;
 
 	init_root_dir(filesystem);
 	sync_test_files(filesystem,50);
@@ -62,6 +63,7 @@ static int hello_getattr(const char *path, struct stat *stbuf,
 		stbuf->st_mode = inode.mode;
 		stbuf->st_size = inode.size;
 		stbuf->st_nlink = 2;
+		stbuf->st_ino = inode_num;
 		return 0;
 	} 
 	
@@ -72,6 +74,7 @@ static int hello_getattr(const char *path, struct stat *stbuf,
 		stbuf->st_mode = inode.mode;
 		stbuf->st_size = inode.size;
 		stbuf->st_nlink = 2;
+		stbuf->st_ino = inode_num;
 		return 0;
 	}
 	else
