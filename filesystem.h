@@ -163,16 +163,15 @@ inode_t read_inode(uint8_t inode_num, filesystem_t* fs){
 
     inode_t inode;
     uint8_t block = fs->inode_table[inode_num];
-    
-    int pos;
+
     inode.size = 0;
 
     move_to_block(block,0,fs);
-    pos = ftell(fs->file);
+
     fread(&(inode.mode),4,1,fs->file);
-    pos = ftell(fs->file);
+
     fread(&(inode.size),1,1,fs->file);
-    pos = ftell(fs->file);
+
     fread(&(inode.index_vector),1,251,fs->file);
     
     return inode;
@@ -318,6 +317,7 @@ void write_file_info(file_t file,uint8_t dir_inode_num ,uint8_t starting_block,f
     fflush(fs->file);
 }
 
+
 /*
     Sposta la posizione all'interno del file che rappresenta il file system ad un blocco dato.
 */
@@ -370,17 +370,17 @@ int16_t move_to_empty_space_in_block(uint8_t block_num,uint8_t is_inode,filesyst
 
 /*
 Sposta la posizione all'interno del file all'ultimo blocco dati di un file a partire dal numero di inode, non dovesse essere presente un blocco dati libero,
-ne assegna uno. TODO SOSTITUIRE, QUESTA VA USATA SOLO SE NON SI TROVA NESSUNO SPAZIO LIBERO NEI BLOCCHI GIA' OCCUPATI.
-IN TAL CASO SI VA ALLA FINE DELLO SPAZIO DISPONIBILE PER IL FILE CON QEUSTA FUNZIONE
+ne assegna uno. TODO  QUESTA VA USATA SOLO SE NON SI TROVA NESSUNO SPAZIO LIBERO NEI BLOCCHI GIA' OCCUPATI.
+IN TAL CASO SI VA ALLA FINE DELLO SPAZIO DISPONIBILE PER IL FILE CON QEUSTA FUNZIONE, AGGIUNGERE UNA FUNZIONI CHE TROVI SPAZIO
 */
 
-uint8_t move_to_data_block(uint8_t inode_num, filesystem_t* fs){
+uint8_t reach_data_end(uint8_t inode_num, filesystem_t* fs){
 
     uint8_t i = 0;
     inode_t inode = read_inode(inode_num,fs); 
 
     while(inode.index_vector[i] != 0){
-        //sono stupido! questa non ha senso chiamarla se l'inode non è l'ultimo!
+
         if(move_to_empty_space_in_block(inode.index_vector[i],0,fs) != -1)
             break;
         else
@@ -394,8 +394,6 @@ uint8_t move_to_data_block(uint8_t inode_num, filesystem_t* fs){
     }
 
     return inode.index_vector[i];
-
-    
 
 }
 
@@ -426,7 +424,7 @@ uint8_t assign_block_to_inode(uint8_t inode,filesystem_t* fs){
         return 0;
 
     fwrite(&block_num,1,1,fs->file);
-    
+    fflush(fs->file);
     return block_num;
 }
 
@@ -580,7 +578,7 @@ int8_t new_file_to_dir(file_t file,char* path , filesystem_t* fs){
         return -1;
 
     sync_new_file(&file,fs);
-    block = move_to_data_block(dir_inode_num,fs);
+    block = reach_data_end(dir_inode_num,fs);
     write_file_info(file,dir_inode_num,block,fs);
     fflush(fs->file);
 
@@ -717,3 +715,56 @@ uint8_t inode_from_path(const char* path,filesystem_t* fs){
 }
  
 /*-------------------------*/
+
+
+/*Operazioni */
+
+void write_to_file(uint8_t inode_num,const char* buf, size_t size,off_t offset,filesystem_t* fs){
+
+    uint8_t i = 0;
+    uint16_t j = 0;
+    uint8_t block_offset = offset / BLOCK_SIZE;
+    inode_t inode = read_inode(inode_num,fs);
+    uint16_t block;
+
+    while(i < block_offset){
+
+        if(inode.index_vector[i] == 0){
+
+            inode.index_vector[i] = assign_block_to_inode(inode_num,fs);
+
+        }
+
+        i++;
+    }
+
+        if(inode.index_vector[i] == 0){
+        
+        inode.index_vector[i] = assign_block_to_inode(inode_num,fs);
+
+        }
+
+    block = inode.index_vector[i];
+    move_to_block(block,0,fs);
+
+    while(j < size){
+
+        block = reach_new_block_if_full(inode_num,block,fs);
+        printf("%ld",ftell(fs->file));
+        fwrite(buf + j,1,1,fs->file);
+        j++;
+
+    }
+
+
+    fflush(fs->file);
+    
+}
+
+
+
+
+
+
+
+/*-----------------------*/

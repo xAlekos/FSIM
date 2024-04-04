@@ -112,11 +112,12 @@ static int hello_open(const char *path, struct fuse_file_info *fi)
 {
 
 	printf("open %s\n",path);
-	if ((fi->flags & O_ACCMODE) != O_RDONLY)
-		return -EACCES;
+	//if ((fi->flags & O_ACCMODE) != O_RDONLY)
+	//	return -EACCES;
 
 	return 0; 
 }
+
 
 /*
 
@@ -134,7 +135,7 @@ static int myfs_create(const char* path, mode_t mode, struct fuse_file_info * fi
 	return 0;
 */
 
-/*
+
 static int myfs_write(const char *path, const char *buf, size_t size, off_t offset,
 		      struct fuse_file_info *fi)
 {
@@ -144,19 +145,11 @@ static int myfs_write(const char *path, const char *buf, size_t size, off_t offs
 
 	printf("Writing to file %s\n",path);
 
-	if(inode_num == 0)
-		return -ENOENT;
+	write_to_file(inode_num,buf,size,offset,filesystem);
 
-	if(offset + size < MAX_FILE_SIZE){
-		//funzione write
-	}
-
-	else
-		size = 0;
-		
 	//nuove dimensioni = (dimensioni_file - (dimensioni_file - offset)) + (size);
 	return size;
-}*/
+}
 
 /*static int myfs_read(const char *path, char *buf, size_t size, off_t offset,
 		      struct fuse_file_info *fi)
@@ -191,7 +184,7 @@ static const struct fuse_operations hello_oper = {
 	.readdir	= hello_readdir,
 	.open		= hello_open,
 	//.read		= hello_read
-	//.write	= hello_write
+	.write	= myfs_write
 	//.create		= hello_create
 };
 
