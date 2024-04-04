@@ -154,12 +154,13 @@ static int myfs_write(const char *path, const char *buf, size_t size, off_t offs
 	return new_size;
 }
 
-/*static int myfs_read(const char *path, char *buf, size_t size, off_t offset,
+static int myfs_read(const char *path, char *buf, size_t size, off_t offset,
 		      struct fuse_file_info *fi)
 {
 	(void) fi;
 
 	uint8_t inode_num = inode_from_path(path,filesystem);
+	inode_t inode = read_inode(inode_num,filesystem);
 	size_t len;
 	printf("Reading file %s\n",path);
 	
@@ -168,25 +169,30 @@ static int myfs_write(const char *path, const char *buf, size_t size, off_t offs
 		
 	//if file->size == 0 return 0
 
-	len = //dimenisoni file
+	len = inode.size;
 
-	if (offset < len) {
+
+	if(offset < len) {
+
 		if (offset + size > len)
 			size = len - offset;
-		memcpy(buf, req_file->content + offset, size);
-	} else
+		read_file(buf,inode_num,offset,filesystem);
+
+	} 
+	
+	else
 		size = 0;
 
 	return size;
 }
-*/
+
 
 static const struct fuse_operations hello_oper = {
 	.init           = hello_init,
 	.getattr	= hello_getattr,
 	.readdir	= hello_readdir,
 	.open		= hello_open,
-	//.read		= hello_read
+	.read		= myfs_read,
 	.write	= myfs_write
 	//.create		= hello_create
 };

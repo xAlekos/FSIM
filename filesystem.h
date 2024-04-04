@@ -815,6 +815,29 @@ uint16_t write_to_file(uint8_t inode_num,const char* buf, size_t size,off_t offs
     return new_size;
 }
 
+void read_file(char* buf ,uint8_t inode_num ,off_t offset ,filesystem_t* fs){
+
+    inode_t inode = read_inode(inode_num,fs);
+    uint8_t block = inode.index_vector[0];
+    uint16_t block_offset = offset / BLOCK_SIZE;
+
+    move_to_block(block,0,fs);  
+
+    while(inode.index_vector[block_offset] != 0){
+        
+        for(uint16_t i = 0; i < inode.size ; i++){
+
+            if(block_free_space_left(block, fs) == 0){
+                block = inode.index_vector[block_offset];
+                move_to_block(block,0,fs);
+            }
+            fread(buf + i, 1,1,fs->file);
+        }
+        block_offset++;
+    }        
+
+}
+
 
 
 
