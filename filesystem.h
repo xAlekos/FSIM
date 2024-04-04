@@ -171,6 +171,7 @@ inode_t read_inode(uint8_t inode_num, filesystem_t* fs){
     fread(&(inode.mode),4,1,fs->file);
 
     fread(&(inode.size),1,1,fs->file);
+    //TODO NO! E' SBAGLIATO! SIZE E' DUE BYTE. SISTEMARE
 
     fread(&(inode.index_vector),1,251,fs->file);
     

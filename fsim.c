@@ -145,13 +145,13 @@ static int myfs_write(const char *path, const char *buf, size_t size, off_t offs
 	(void) fi;
 
 	uint8_t inode_num = inode_from_path(path,filesystem);
+	uint16_t new_size; 
 
 	printf("Writing to file %s\n",path);
 
-	write_to_file(inode_num,buf,size,offset,filesystem);
+	new_size = write_to_file(inode_num,buf,size,offset,filesystem);
 
-	//nuove dimensioni = (dimensioni_file - (dimensioni_file - offset)) + (size);
-	return size;
+	return new_size;
 }
 
 /*static int myfs_read(const char *path, char *buf, size_t size, off_t offset,
