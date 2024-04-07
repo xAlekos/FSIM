@@ -597,16 +597,19 @@ int8_t new_file_to_dir(file_t file,char* path , filesystem_t* fs){
     return 0;
 }
 
-void read_dir_entries(file_t* dir ,inode_t inode , filesystem_t* fs){
+uint8_t read_dir_entries(file_t* dir ,inode_t inode , filesystem_t* fs){
 
     
     uint8_t new_block = inode.index_vector[0];
     uint16_t k = 0;
     uint16_t last_entry = 0;
-
+    
+    if(inode.index_vector[last_entry] == 0)
+        return 0;
+        
     move_to_block(new_block,0,fs);  
 
-    while(inode.index_vector[k] != 0){
+    while(inode.index_vector[k] != 0 && last_entry < MAX_DIR_ENTRIES){
 
         if(block_free_space_left(new_block, fs) == 0){
             k++;
@@ -639,7 +642,7 @@ void read_dir_entries(file_t* dir ,inode_t inode , filesystem_t* fs){
         last_entry++;
     }        
     dir->entries[last_entry].inode_index = 0;
-
+    return 1;
 }
 
 /*
@@ -677,8 +680,10 @@ uint8_t get_dir_element_inode(char* name ,uint8_t inode_num,filesystem_t* fs){
     file_t dir;
     inode_t dir_inode = read_inode(inode_num,fs);
     uint16_t i = 0;
-    //TODO AGGIUNGERE CHECK SE L'ELEMENTO E' UNA DIRECTORY
-    read_dir_entries(&dir,dir_inode,fs);
+    int8_t ret = read_dir_entries(&dir,dir_inode,fs);
+    
+    if(ret == 0)
+        return 0;
 
     while(i < MAX_DIR_ENTRIES && strcmp(dir.entries[i].name, name) != 0){
         i++;

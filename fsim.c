@@ -68,6 +68,9 @@ static int hello_getattr(const char *path, struct stat *stbuf,
 	} 
 	
 	inode_num = inode_from_path(path,filesystem);
+
+	if(inode_num == 0)
+		return -ENOENT;
 	
 	if(inode_num != 0){
 		inode = read_inode(inode_num,filesystem);	
@@ -77,10 +80,8 @@ static int hello_getattr(const char *path, struct stat *stbuf,
 		stbuf->st_ino = inode_num;
 		return 0;
 	}
-	else
-		return -ENOENT;
 	
-	return 0;
+	return -ENOENT;
 }
 
 static int hello_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
