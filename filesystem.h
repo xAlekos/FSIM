@@ -346,68 +346,39 @@ void move_to_block(block_num_t block_num,off_t offset ,filesystem_t* fs){
 */
 int16_t move_to_empty_space_in_block(block_num_t block_num,uint8_t is_inode,filesystem_t* fs){
 
-    //TODO ROTTA! SOSTITUIRE! IN QUESTO MOMENTO SE AGGIUNGI TROPPI FILE AD UNA CARTELLA (USCENDO FUORI DA UN BLOCCO, ESPLODE TUTTO!)
-    uint32_t i = 0;
-    off_t offset = 0;
-    int pos = 0;
+    uint8_t block[BLOCK_SIZE];
+    uint8_t offset;
 
-    if(is_inode == 1){
-        block_num_t block;
-        offset = sizeof(mode_t) + sizeof(size_t);
-        move_to_block(block_num,offset,fs);
-        fread(&block, sizeof(block_num_t),1,fs->file);
-        while(i < BLOCK_SIZE - offset && block != 0){
-            
-            if(block == 0)
-                return 0;
-            i++;
-            fread(&block, sizeof(block_num_t),1,fs->file);
+    move_to_block(block_num,0,fs);
+    fread(block,1,BLOCK_SIZE,fs->file);
+    
+    if(is_inode == 1)
+         offset = sizeof(mode_t) + sizeof(size_t);
+    else
+        offset = 0;
 
-        }
+    int i = 0 + offset;
+    int free_space_candidate = -1;
+    
+    while(i < BLOCK_SIZE){
 
-        if(i == BLOCK_SIZE - offset)
-            return -1;
-        else
-            fseek(fs->file,ftell(fs->file) - 1,SEEK_SET);
+        if(block[i] == 0 && free_space_candidate == -1)
+            free_space_candidate = i;
+
+        if(block[i] != 0 && free_space_candidate != -1)
+            free_space_candidate = -1;
+
+        i++;
     }
-    else{
 
-        move_to_block(block_num,0,fs);
-        inode_num_t num = 0;
-        size_t name_len = 0;
-        char ch;
+    if(free_space_candidate == -1)
+        return -1;
 
-        pos = ftell(fs->file);
-        fread(&num,sizeof(inode_num_t),1,fs->file);
-        pos = ftell(fs->file);
-        fread(&name_len,sizeof(uint16_t),1,fs->file);
-        for(int j = 0; j < name_len; j++){
-            pos = ftell(fs->file);
-            fread(&ch,sizeof(char),1,fs->file);
-        }
-        while(i < BLOCK_SIZE && num != 0){
-            pos = ftell(fs->file);
-            fread(&num,sizeof(inode_num_t),1,fs->file);
-            if(num == 0)
-                break;
-            pos = ftell(fs->file);
-            fread(&name_len,sizeof(uint16_t),1,fs->file);
-            for(int j = 0; j < name_len; j++){
-                pos = ftell(fs->file);
-                fread(&ch,sizeof(char),1,fs->file);
-            }
-            i++;
-        }
-        if(i == BLOCK_SIZE)
-            return -1;
-        else
-            fseek(fs->file,ftell(fs->file) - 1,SEEK_SET);
+    else
+        move_to_block(block_num,free_space_candidate,fs);
 
-    }
-    return i;
+    return 0;
 
-
-   
 }
 
 /*
@@ -657,6 +628,10 @@ uint8_t read_dir_entries(file_t* dir ,inode_t inode , filesystem_t* fs){
         }
 
         fread(&(dir->entries[last_entry_num].inode_index), sizeof(inode_num_t),1,fs->file);
+        
+        if(dir->entries[last_entry_num].inode_index == 0)
+            break;
+    
 
         if(block_free_space_left(new_block, fs) == 0){
             k++;

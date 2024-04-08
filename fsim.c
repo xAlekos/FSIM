@@ -42,10 +42,8 @@ static void *hello_init(struct fuse_conn_info *conn,
 	cfg->use_ino = 1;
 
 	init_root_dir(filesystem);
-	sync_test_files(filesystem,22);
-	sync_test_files(filesystem,6);
+	sync_test_files(filesystem,30);
 	fflush(filesystem->file);
-	//sync_test_dir(filesystem,5);
 
 	return NULL;
 }
@@ -98,19 +96,18 @@ static int hello_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 	if (strcmp(path, "/") != 0)
 		return -ENOENT;
 	
-	file_t* dir = calloc(1,sizeof(file_t)); 
+	file_t dir = {0};
 	inode_t inode = read_inode(0,filesystem);
-	read_dir_entries(dir,inode,filesystem);
+	read_dir_entries(&dir,inode,filesystem);
 	uint16_t i;
 
 	filler(buf, ".", NULL, 0, 0);
 	filler(buf, "..", NULL, 0, 0);
 
-	while(dir->entries[i].inode_index != 0){
-		filler(buf, dir->entries[i].name, NULL, 0, 0);
+	while(dir.entries[i].inode_index != 0){
+		filler(buf, dir.entries[i].name, NULL, 0, 0);
 		i++;
 	}
-	free(dir);
 	return 0;
 }
 
