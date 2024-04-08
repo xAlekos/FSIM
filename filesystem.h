@@ -79,9 +79,9 @@ typedef struct filesystem{
 
 
 uint8_t inode_from_path(const char* path,filesystem_t* fs);
-uint32_t block_free_space_left(uint8_t block_num,filesystem_t* fs);
-void move_to_block(uint8_t block_num,uint8_t offset ,filesystem_t* fs);
-uint8_t assign_block_to_inode(uint8_t inode,filesystem_t* fs);
+uint32_t block_free_space_left(block_num_t block_num,filesystem_t* fs);
+void move_to_block(block_num_t block_num,off_t offset ,filesystem_t* fs);
+uint8_t assign_block_to_inode(inode_num_t inode,filesystem_t* fs);
 void sync_fs(filesystem_t* fs);
 int8_t new_file_to_dir(file_t file,char* path , filesystem_t* fs);
 
@@ -167,7 +167,7 @@ inode_num_t get_free_inode_number(filesystem_t* fs){
 inode_t read_inode(uint8_t inode_num, filesystem_t* fs){
 
     inode_t inode = {0};
-    uint8_t block = fs->inode_table[inode_num];
+    block_num_t block = fs->inode_table[inode_num];
     int pos = 0;
 
     inode.size = 0;
@@ -281,7 +281,7 @@ uint8_t get_and_set_free_block(filesystem_t* fs){
     all'inode che rappresenta il file sul quale si sta scrivendo e sposta la posizione all'interno
     del file che rappresenta il file system a quella di questo nuovo blocco.
 */
-uint8_t reach_new_block_if_full(uint8_t inode_num,uint8_t starting_block,filesystem_t* fs){
+block_num_t reach_new_block_if_full(inode_num_t inode_num,block_num_t starting_block,filesystem_t* fs){
 
     block_num_t new_block;
     if(block_free_space_left(starting_block,fs) == 0){
@@ -300,7 +300,7 @@ uint8_t reach_new_block_if_full(uint8_t inode_num,uint8_t starting_block,filesys
     lunghezza del nome e nome del file. Queste informazioni vanno scritte all'interno di un blocco dati
     facente parte di una directory, è dunque necessario spostarsi nel blocco corretto prima di chimare questa funzione.
 */
-void write_file_info(file_t file,uint8_t dir_inode_num ,uint8_t starting_block,filesystem_t* fs){
+void write_file_info(file_t file,inode_num_t dir_inode_num ,block_num_t starting_block,filesystem_t* fs){
 
     uint8_t i = 0;
     uint16_t file_name_lenght = strlen(file.name);
@@ -331,7 +331,7 @@ void write_file_info(file_t file,uint8_t dir_inode_num ,uint8_t starting_block,f
 /*
     Sposta la posizione all'interno del file che rappresenta il file system ad un blocco dato.
 */
-void move_to_block(uint8_t block_num,uint8_t offset ,filesystem_t* fs){
+void move_to_block(block_num_t block_num,off_t offset ,filesystem_t* fs){
     fseek(fs->file,block_num*BLOCK_SIZE + offset,SEEK_SET);
 }
 
@@ -344,11 +344,11 @@ void move_to_block(uint8_t block_num,uint8_t offset ,filesystem_t* fs){
     Se il blocco in esame è un inode questo va segnalato tramite il parametro is_inode.
 
 */
-int16_t move_to_empty_space_in_block(uint8_t block_num,uint8_t is_inode,filesystem_t* fs){
+int16_t move_to_empty_space_in_block(block_num_t block_num,uint8_t is_inode,filesystem_t* fs){
 
     //TODO ROTTA! SOSTITUIRE! IN QUESTO MOMENTO SE AGGIUNGI TROPPI FILE AD UNA CARTELLA (USCENDO FUORI DA UN BLOCCO, ESPLODE TUTTO!)
     uint32_t i = 0;
-    uint8_t offset = 0;
+    off_t offset = 0;
     int pos = 0;
 
     if(is_inode == 1){
@@ -416,7 +416,7 @@ ne assegna uno. TODO  QUESTA VA USATA SOLO SE NON SI TROVA NESSUNO SPAZIO LIBERO
 IN TAL CASO SI VA ALLA FINE DELLO SPAZIO DISPONIBILE PER IL FILE CON QEUSTA FUNZIONE, AGGIUNGERE UNA FUNZIONI CHE TROVI SPAZIO
 */
 
-uint8_t reach_data_end(uint8_t inode_num, filesystem_t* fs){
+block_num_t reach_data_end(inode_num_t inode_num, filesystem_t* fs){
 
     uint8_t i = 0;
     inode_t inode = read_inode(inode_num,fs); 
@@ -443,7 +443,7 @@ uint8_t reach_data_end(uint8_t inode_num, filesystem_t* fs){
 Assegna un inode ad un blocco, questo blocco conterrà gli indici di tutti i blocchi facenti parti del file
 rappresentato dall'inode
 */
-void assign_inode_to_block(uint8_t inode, uint8_t block ,filesystem_t* fs){
+void assign_inode_to_block(inode_num_t inode, block_num_t block ,filesystem_t* fs){
     
     fs->inode_table[inode] = block;
     fs->free_space_table[block] = 1;
@@ -454,7 +454,7 @@ void assign_inode_to_block(uint8_t inode, uint8_t block ,filesystem_t* fs){
 /*
 Assegna un blocco libero ad un inode, imposta il blocco assegnato come occupato.
 */
-uint8_t assign_block_to_inode(uint8_t inode,filesystem_t* fs){
+block_num_t assign_block_to_inode(inode_num_t inode,filesystem_t* fs){
     
     uint8_t ret;
     block_num_t block_num = get_and_set_free_block(fs);
@@ -471,7 +471,7 @@ uint8_t assign_block_to_inode(uint8_t inode,filesystem_t* fs){
 }
 
 
-uint32_t block_free_space_left(uint8_t block_num,filesystem_t* fs){
+uint32_t block_free_space_left(block_num_t block_num,filesystem_t* fs){
     
     uint32_t pos = ftell(fs->file);
     uint32_t space_left =  BLOCK_SIZE*(block_num + 1) - pos;
@@ -520,8 +520,8 @@ filesystem_t* init_fs(filesystem_t** fs){
 
 int8_t sync_new_file(file_t* file, filesystem_t* fs){
     
-    uint8_t inode_num = get_free_inode_number(fs);
-    uint8_t block_num = get_and_set_free_block(fs);
+    inode_num_t inode_num = get_free_inode_number(fs);
+    block_num_t block_num = get_and_set_free_block(fs);
 
     if(block_num == 0)
         return -1;
@@ -539,7 +539,7 @@ int8_t sync_new_file(file_t* file, filesystem_t* fs){
 }
 
 
-void update_file_size(uint8_t file_inode ,size_t new_size,filesystem_t* fs){
+void update_file_size(inode_num_t file_inode ,size_t new_size,filesystem_t* fs){
     
     inode_num_t inode_block = fs->inode_table[file_inode];
     move_to_block(inode_block,4,fs);
@@ -592,7 +592,7 @@ void sync_test_dir(filesystem_t* fs,uint8_t num){
 
 
 
-uint8_t is_inode_full(uint8_t dir_inode_num, filesystem_t* fs){
+uint8_t is_inode_full(inode_num_t dir_inode_num, filesystem_t* fs){
     
     uint8_t i = 0;
     inode_t inode = read_inode(dir_inode_num,fs); 
@@ -613,9 +613,9 @@ uint8_t is_inode_full(uint8_t dir_inode_num, filesystem_t* fs){
 
 int8_t new_file_to_dir(file_t file,char* path , filesystem_t* fs){
 
-    uint8_t dir_inode_num;
+    inode_num_t dir_inode_num;
     uint8_t ret;
-    uint8_t block;
+    block_num_t block;
 
     if(strcmp(path,"/") == 0)
         dir_inode_num = 0;
@@ -639,16 +639,16 @@ int8_t new_file_to_dir(file_t file,char* path , filesystem_t* fs){
 uint8_t read_dir_entries(file_t* dir ,inode_t inode , filesystem_t* fs){
 
     
-    uint8_t new_block = inode.index_vector[0];
+    block_num_t new_block = inode.index_vector[0];
     uint32_t k = 0;
-    uint32_t last_entry = 0;
+    uint32_t last_entry_num = 0;
     
-    if(inode.index_vector[last_entry] == 0)
+    if(inode.index_vector[last_entry_num] == 0)
         return 0;
         
     move_to_block(new_block,0,fs);  
 
-    while(inode.index_vector[k] != 0 && last_entry < MAX_DIR_ENTRIES){
+    while(inode.index_vector[k] != 0 && last_entry_num < MAX_DIR_ENTRIES){
 
         if(block_free_space_left(new_block, fs) == 0){
             k++;
@@ -656,7 +656,7 @@ uint8_t read_dir_entries(file_t* dir ,inode_t inode , filesystem_t* fs){
             move_to_block(new_block,0,fs);
         }
 
-        fread(&(dir->entries[last_entry].inode_index), sizeof(inode_num_t),1,fs->file);
+        fread(&(dir->entries[last_entry_num].inode_index), sizeof(inode_num_t),1,fs->file);
 
         if(block_free_space_left(new_block, fs) == 0){
             k++;
@@ -664,9 +664,9 @@ uint8_t read_dir_entries(file_t* dir ,inode_t inode , filesystem_t* fs){
             move_to_block(new_block,0,fs);
         }
 
-        fread(&(dir->entries[last_entry].name_lenght), sizeof(uint16_t),1,fs->file);
+        fread(&(dir->entries[last_entry_num].name_lenght), sizeof(uint16_t),1,fs->file);
         
-        for(uint32_t i = 0; i < (dir->entries[last_entry].name_lenght); i++){
+        for(uint32_t i = 0; i < (dir->entries[last_entry_num].name_lenght); i++){
 
             if(block_free_space_left(new_block, fs) == 0){
                 k++;
@@ -674,13 +674,13 @@ uint8_t read_dir_entries(file_t* dir ,inode_t inode , filesystem_t* fs){
                 move_to_block(new_block,0,fs);
             }
 
-            fread(&(dir->entries[last_entry].name[i]), 1,1,fs->file);
-            dir->entries[last_entry].name[i+1] = '\0';
+            fread(&(dir->entries[last_entry_num].name[i]), 1,1,fs->file);
+            dir->entries[last_entry_num].name[i+1] = '\0';
         }
     
-        last_entry++;
+        last_entry_num++;
     }        
-    dir->entries[last_entry].inode_index = 0;
+    dir->entries[last_entry_num].inode_index = 0;
     return 1;
 }
 
@@ -714,7 +714,7 @@ uint32_t tokenize_path(const char* path, char** tokens_buffer){
 Ritorna il numero di inode di un elemento all'interno di una directory
 dato il nome.
 */
-uint8_t get_dir_element_inode(char* name ,uint8_t inode_num,filesystem_t* fs){
+uint8_t get_dir_element_inode(char* name ,inode_num_t inode_num,filesystem_t* fs){
     
     file_t dir;
     inode_t dir_inode = read_inode(inode_num,fs);
@@ -736,7 +736,7 @@ uint8_t get_dir_element_inode(char* name ,uint8_t inode_num,filesystem_t* fs){
 }
 
 
-uint8_t inode_from_path(const char* path,filesystem_t* fs){
+inode_num_t inode_from_path(const char* path,filesystem_t* fs){
 	
 	if(strcmp(path,"/") == 0)
 		return 0;
@@ -753,7 +753,7 @@ uint8_t inode_from_path(const char* path,filesystem_t* fs){
         return get_dir_element_inode(tokens[0],0,fs);
 
 
-    uint8_t last_element_inode = get_dir_element_inode(tokens[i++],0,fs);
+    inode_num_t last_element_inode = get_dir_element_inode(tokens[i++],0,fs);
 
     if(last_element_inode == 0)
         return 0;
@@ -781,7 +781,7 @@ Dato un path ritorna la directory che contiene il file individuato dal path
 
 @path il path del file di cui si vuole ottenere riferimento alla directory in cui è contenuto
 */
-uint8_t parent_dir_inode_from_path(const char* path,filesystem_t* fs){
+inode_num_t parent_dir_inode_from_path(const char* path,filesystem_t* fs){
 
     char* tokens[500];
     uint8_t i = 0;
@@ -794,7 +794,7 @@ uint8_t parent_dir_inode_from_path(const char* path,filesystem_t* fs){
     if(n_tokens <= 1)
         return 0;
 
-    uint8_t last_file = get_dir_element_inode(tokens[i++],0,fs);
+    inode_num_t last_file = get_dir_element_inode(tokens[i++],0,fs);
 
     if(last_file == 0)
         return 0;
@@ -822,13 +822,13 @@ uint8_t parent_dir_inode_from_path(const char* path,filesystem_t* fs){
 
 /*Operazioni */
 
-uint32_t write_to_file(uint8_t inode_num,const char* buf, size_t size,off_t offset,filesystem_t* fs){
+uint32_t write_to_file(inode_num_t inode_num,const char* buf, size_t size,off_t offset,filesystem_t* fs){
 
     uint8_t i = 0;
     uint32_t j = 0;
     uint8_t block_offset = offset / BLOCK_SIZE;
     inode_t inode = read_inode(inode_num,fs);
-    uint32_t block;
+    block_num_t block;
 
     while(i < block_offset){
 
@@ -859,10 +859,10 @@ uint32_t write_to_file(uint8_t inode_num,const char* buf, size_t size,off_t offs
     return new_size;
 }
 
-void read_file(char* buf ,uint8_t inode_num ,off_t offset ,filesystem_t* fs){
+void read_file(char* buf ,inode_num_t inode_num ,off_t offset ,filesystem_t* fs){
 
     inode_t inode = read_inode(inode_num,fs);
-    uint8_t block = inode.index_vector[0];
+    block_num_t block = inode.index_vector[0];
     uint32_t block_offset = offset / BLOCK_SIZE;
 
     move_to_block(block,0,fs);  

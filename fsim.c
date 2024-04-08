@@ -43,6 +43,7 @@ static void *hello_init(struct fuse_conn_info *conn,
 
 	init_root_dir(filesystem);
 	sync_test_files(filesystem,22);
+	sync_test_files(filesystem,6);
 	fflush(filesystem->file);
 	//sync_test_dir(filesystem,5);
 
@@ -54,7 +55,7 @@ static int hello_getattr(const char *path, struct stat *stbuf,
 {
 	(void) fi;
 	inode_t inode;
-	uint8_t inode_num; 
+	inode_num_t inode_num; 
 	printf("getattr %s\n",path);
 
 	memset(stbuf, 0, sizeof(struct stat));
