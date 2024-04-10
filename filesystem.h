@@ -307,12 +307,15 @@ void write_file_info(file_t file,inode_num_t dir_inode_num ,block_num_t starting
     block_num_t block = starting_block;
     int pos = 0;
 
-    pos = ftell(fs->file);
-    block = reach_new_block_if_full(dir_inode_num,block,fs);
-    fwrite(&(file.inode_num),sizeof(inode_num_t),1,fs->file);
-    block = reach_new_block_if_full(dir_inode_num,block,fs);
-    pos = ftell(fs->file);
-    fwrite(&file_name_lenght,sizeof(uint16_t),1,fs->file);
+    for(int j = 0; j < sizeof(inode_num_t);j++){
+        block = reach_new_block_if_full(dir_inode_num,block,fs);
+        fwrite(&file.inode_num + j,1,1,fs->file);
+    }
+    
+    for(int j = 0; j < sizeof(file_name_lenght);j++){
+        block = reach_new_block_if_full(dir_inode_num,block,fs);
+        fwrite(&file_name_lenght + j,1,1,fs->file);
+    }
 
     while(i < file_name_lenght){
 

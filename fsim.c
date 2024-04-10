@@ -42,7 +42,7 @@ static void *hello_init(struct fuse_conn_info *conn,
 	cfg->use_ino = 1;
 
 	init_root_dir(filesystem);
-	sync_test_files(filesystem,30);
+	sync_test_files(filesystem,53);
 	fflush(filesystem->file);
 
 	return NULL;
