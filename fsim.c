@@ -93,14 +93,20 @@ static int hello_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 	(void) fi;
 	(void) flags;
 	printf("readdir %s\n",path);
-
-	if (strcmp(path, "/") != 0)
-		return -ENOENT;
-	
+	inode_t inode;
 	file_t dir = {0};
-	inode_t inode = read_inode(0,filesystem);
+	if (strcmp(path, "/") == 0){
+		inode_num_t dir_inode_num = 0;
+		inode = read_inode(dir_inode_num,filesystem);
+	}
+	else{
+		inode_num_t dir_inode_num = inode_from_path(path,filesystem);
+		if(dir_inode_num == 0)
+			return -ENOENT;
+		inode = read_inode(dir_inode_num,filesystem);
+	}
 	read_dir_entries(&dir,inode,filesystem);
-	uint16_t i;
+	uint16_t i = 0;
 
 	filler(buf, ".", NULL, 0, 0);
 	filler(buf, "..", NULL, 0, 0);
@@ -123,21 +129,28 @@ static int hello_open(const char *path, struct fuse_file_info *fi)
 }
 
 
-/*
 
 static int myfs_create(const char* path, mode_t mode, struct fuse_file_info * fi){
 	//TODO sistemare rilevazione errori
 	(void)fi;
-	filenode_t* parent_dir = GetParentDir(path);
 	
-	char* name = FileNameFromPath(path);
-	filenode_t* newfile = AddNewFileToDir(parent_dir, name, NULL , S_IFREG | mode, REG , NULL);
-	if(newfile == NULL)
-		return -EEXIST;
+	int8_t ret = 0;
+	file_t new_file = {0};
+	char* name = file_name_from_path(path);
+	strncpy(new_file.name,name,MAX_FILE_NAME);
+	new_file.mode = mode;
+	
+	ret = new_file_to_dir(new_file,path,filesystem);
+
 	free(name);
+
+	if(ret == -1)
+		return -EEXIST;
+
 	printf("create file %s\n",path);
 	return 0;
-*/
+}
+
 
 
 static int myfs_write(const char *path, const char *buf, size_t size, off_t offset,
@@ -194,8 +207,8 @@ static const struct fuse_operations hello_oper = {
 	.readdir	= hello_readdir,
 	.open		= hello_open,
 	.read		= myfs_read,
-	.write	= myfs_write
-	//.create		= hello_create
+	.write		= 	myfs_write,
+	.create		= myfs_create
 };
 
 int main(int argc, char *argv[])
@@ -206,5 +219,8 @@ int main(int argc, char *argv[])
 	init_fs(&filesystem);
 	ret = fuse_main(args.argc, args.argv, &hello_oper, NULL);
 	fuse_opt_free_args(&args);
+	free(filesystem->free_space_table);
+	free(filesystem->inode_table);
+	free(filesystem);
 	return ret;
 }
