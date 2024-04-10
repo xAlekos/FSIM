@@ -200,6 +200,21 @@ static int myfs_read(const char *path, char *buf, size_t size, off_t offset,
 	return size;
 }
 
+static int myfs_chmod(const char* path, mode_t new_mode, struct fuse_file_info *fi){
+	
+	(void)fi;
+	inode_num_t file_inode = inode_from_path(path,filesystem);
+
+	if(file_inode == 0)
+		return -ENOENT;
+
+	printf("Changing mode of file %s to %d\n", path, new_mode);
+	
+	update_file_mode(file_inode,new_mode,filesystem);
+
+	return 0;
+}
+
 
 static const struct fuse_operations hello_oper = {
 	.init           = hello_init,
@@ -208,7 +223,8 @@ static const struct fuse_operations hello_oper = {
 	.open		= hello_open,
 	.read		= myfs_read,
 	.write		= 	myfs_write,
-	.create		= myfs_create
+	.create		= myfs_create,
+	.chmod		= myfs_chmod
 };
 
 int main(int argc, char *argv[])

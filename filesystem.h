@@ -15,6 +15,7 @@
 #define MAX_FILE_SIZE 4096
 
 #define SIZE_OFFSET_IN_INODE 4
+#define MODE_OFFSET_IN_INODE 0
 
 #define SEEK_FREESPACE_TABLE_SET 256
 
@@ -535,6 +536,14 @@ void update_file_size(inode_num_t file_inode ,size_t new_size,filesystem_t* fs){
     inode_num_t inode_block = fs->inode_table[file_inode];
     move_to_block(inode_block,SIZE_OFFSET_IN_INODE,fs);
     fwrite(&new_size,sizeof(size_t),1,fs->file);
+
+}
+
+void update_file_mode(inode_num_t file_inode ,mode_t new_mode,filesystem_t* fs){
+    
+    inode_num_t inode_block = fs->inode_table[file_inode];
+    move_to_block(inode_block,MODE_OFFSET_IN_INODE,fs);
+    fwrite(&new_mode,sizeof(mode_t),1,fs->file);
 
 }
 
